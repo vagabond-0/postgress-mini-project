@@ -1,0 +1,11 @@
+2025-02-26 16:53:21.306 IST [142339] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-02-26 16:53:21.307 IST [142339] LOG:  listening on IPv6 address "::1", port 5432
+2025-02-26 16:53:21.307 IST [142339] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-02-26 16:53:21.308 IST [142339] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-02-26 16:53:21.312 IST [142342] LOG:  database system was shut down at 2025-02-26 16:52:50 IST
+2025-02-26 16:53:21.317 IST [142339] LOG:  database system is ready to accept connections
+2025-02-26 16:53:39.711 IST [142353] FATAL:  database "my_db" does not exist
+2025-02-26 16:53:54.971 IST [142365] FATAL:  database "my_db/" does not exist
+2025-02-26 16:53:57.551 IST [142367] FATAL:  database "my_db" does not exist
+2025-02-26 16:58:21.413 IST [142340] LOG:  checkpoint starting: time
+2025-02-26 16:59:56.827 IST [142340] LOG:  checkpoint complete: wrote 954 buffers (5.8%); 0 WAL file(s) added, 0 removed, 0 recycled; write=95.386 s, sync=0.019 s, total=95.415 s; sync files=310, longest=0.002 s, average=0.001 s; distance=4421 kB, estimate=4421 kB; lsn=0/19066D8, redo lsn=0/1906648

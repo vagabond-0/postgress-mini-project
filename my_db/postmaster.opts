@@ -1,0 +1,1 @@
+/home/amalendu/project/postgresql-17.4/bin/postgres "-D" "my_db"
