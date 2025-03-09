@@ -153,6 +153,7 @@ static bool CopyReadLine(CopyFromState cstate);
 static bool CopyReadLineText(CopyFromState cstate);
 static int	CopyReadAttributesText(CopyFromState cstate);
 static int	CopyReadAttributesCSV(CopyFromState cstate);
+static int  CopyReadAttributesJsonArray(CopyFromState cstate);
 static Datum CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 									 Oid typioparam, int32 typmod,
 									 bool *isnull);
@@ -831,6 +832,8 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 	/* Parse the line into de-escaped field values */
 	if (cstate->opts.csv_mode)
 		fldct = CopyReadAttributesCSV(cstate);
+	else if(cstate->opts.json_mode)
+		fldct = CopyReadAttributesJsonArray(cstate);
 	else
 		fldct = CopyReadAttributesText(cstate);
 
@@ -936,6 +939,8 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 					 */
 					string = NULL;
 				}
+			}else if(cstate->opts.json_mode){
+				elog(NOTICE, "JSON parsing mode detected  COPY command");
 			}
 
 			cstate->cur_attname = NameStr(att->attname);
@@ -1128,6 +1133,7 @@ CopyReadLine(CopyFromState cstate)
 			cstate->raw_buf_len = 0;
 		}
 	}
+	
 	else
 	{
 		/*
@@ -2029,4 +2035,189 @@ CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 
 	*isnull = false;
 	return result;
+}
+
+static int
+CopyReadAttributesJsonArray(CopyFromState cstate)
+{
+    int         fieldno = 0;
+    StringInfoData json_buf;
+    StringInfoData current_object;
+    bool        first_line = true;
+    bool        done = false;
+    bool        in_object = false;
+    bool        in_string = false;
+    bool        escaped = false;
+    int         brace_level = 0;
+    int         bracket_level = 0;
+    TupleDesc   tupDesc = RelationGetDescr(cstate->rel);
+
+    /* Initialize buffers */
+    initStringInfo(&json_buf);
+    initStringInfo(&current_object);
+
+    /* Initialize raw_fields array */
+    if (cstate->max_fields < tupDesc->natts)
+    {
+        cstate->max_fields = tupDesc->natts;
+        cstate->raw_fields = repalloc(cstate->raw_fields, 
+                                    cstate->max_fields * sizeof(char *));
+    }
+
+    /* Initialize all fields to NULL */
+    for (int i = 0; i < cstate->max_fields; i++)
+    {
+        cstate->raw_fields[i] = NULL;
+    }
+
+    /* Read and process the JSON content */
+    do {
+        if (!first_line) {
+            appendStringInfoChar(&json_buf, '\n');
+        }
+        appendBinaryStringInfo(&json_buf, 
+                             cstate->line_buf.data,
+                             cstate->line_buf.len);
+        first_line = false;
+
+        char *cur_ptr = json_buf.data;
+        char *end_ptr = json_buf.data + json_buf.len;
+        
+        while (cur_ptr < end_ptr) {
+            char c = *cur_ptr++;
+
+            if (!in_string) {
+                if (c == '"') {
+                    in_string = true;
+                }
+                else if (c == '{') {
+                    brace_level++;
+                    if (brace_level == 1) {
+                        in_object = true;
+                        resetStringInfo(&current_object);
+                    }
+                }
+                else if (c == '}') {
+                    brace_level--;
+                    if (brace_level == 0 && in_object) {
+                        appendStringInfoChar(&current_object, c);
+                        
+                        /* Process each column in the tuple */
+                        for (int i = 0; i < tupDesc->natts; i++)
+                        {
+                            Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+                            const char *attname = NameStr(att->attname);
+                            StringInfoData value;
+                            initStringInfo(&value);
+                            
+                            /* Create the JSON key pattern */
+                            StringInfoData pattern;
+                            initStringInfo(&pattern);
+                            appendStringInfo(&pattern, "\"%s\"", attname);
+                            
+                            /* Find the key in the JSON object */
+                            char *key_pos = strstr(current_object.data, pattern.data);
+                            if (key_pos != NULL)
+                            {
+                                /* Move to the value part */
+                                char *value_start = strchr(key_pos + pattern.len, ':');
+                                if (value_start)
+                                {
+                                    value_start++; /* Skip the colon */
+                                    
+                                    /* Skip whitespace */
+                                    while (isspace((unsigned char) *value_start))
+                                        value_start++;
+                                    
+                                    /* Extract the value */
+                                    bool in_val_string = false;
+                                    bool val_escaped = false;
+                                    
+                                    if (*value_start == '"')
+                                    {
+                                        /* String value */
+                                        in_val_string = true;
+                                        value_start++; /* Skip the opening quote */
+                                        
+                                        while (*value_start)
+                                        {
+                                            if (*value_start == '\\' && !val_escaped)
+                                            {
+                                                val_escaped = true;
+                                            }
+                                            else if (*value_start == '"' && !val_escaped)
+                                            {
+                                                break;
+                                            }
+                                            else
+                                            {
+                                                appendStringInfoChar(&value, *value_start);
+                                                val_escaped = false;
+                                            }
+                                            value_start++;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        /* Number or other value */
+                                        while (*value_start && *value_start != ',' && *value_start != '}')
+                                        {
+                                            if (!isspace((unsigned char) *value_start))
+                                                appendStringInfoChar(&value, *value_start);
+                                            value_start++;
+                                        }
+                                    }
+                                    
+                                    /* Store the value */
+                                    cstate->raw_fields[i] = pstrdup(value.data);
+                                }
+                            }
+                            
+                            pfree(pattern.data);
+                            pfree(value.data);
+                        }
+                        
+                        fieldno++;
+                        in_object = false;
+                    }
+                }
+                else if (c == '[') {
+                    bracket_level++;
+                }
+                else if (c == ']') {
+                    bracket_level--;
+                    if (bracket_level == 0) {
+                        done = true;
+                        break;
+                    }
+                }
+            }
+            else {
+                if (c == '\\' && !escaped) {
+                    escaped = true;
+                }
+                else if (c == '"' && !escaped) {
+                    in_string = false;
+                }
+                else {
+                    escaped = false;
+                }
+            }
+
+            if (in_object) {
+                appendStringInfoChar(&current_object, c);
+            }
+        }
+
+        if (!done) {
+            done = CopyReadLine(cstate);
+        }
+
+    } while (!done);
+
+    /* Clean up */
+    pfree(json_buf.data);
+    pfree(current_object.data);
+
+    return tupDesc->natts;
 }
