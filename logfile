@@ -9,3 +9,113 @@
 2025-02-26 16:53:57.551 IST [142367] FATAL:  database "my_db" does not exist
 2025-02-26 16:58:21.413 IST [142340] LOG:  checkpoint starting: time
 2025-02-26 16:59:56.827 IST [142340] LOG:  checkpoint complete: wrote 954 buffers (5.8%); 0 WAL file(s) added, 0 removed, 0 recycled; write=95.386 s, sync=0.019 s, total=95.415 s; sync files=310, longest=0.002 s, average=0.001 s; distance=4421 kB, estimate=4421 kB; lsn=0/19066D8, redo lsn=0/1906648
+2025-03-09 12:33:13.124 IST [20201] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 12:33:13.125 IST [20201] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 12:33:13.125 IST [20201] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 12:33:13.126 IST [20201] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 12:33:13.130 IST [20204] LOG:  database system was interrupted; last known up at 2025-02-26 16:59:56 IST
+2025-03-09 12:33:13.181 IST [20204] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-09 12:33:13.183 IST [20204] LOG:  redo starts at 0/1906648
+2025-03-09 12:33:13.183 IST [20204] LOG:  invalid record length at 0/1906788: expected at least 24, got 0
+2025-03-09 12:33:13.183 IST [20204] LOG:  redo done at 0/1906750 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2025-03-09 12:33:13.186 IST [20202] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-09 12:33:13.194 IST [20202] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.009 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1906788, redo lsn=0/1906788
+2025-03-09 12:33:13.195 IST [20201] LOG:  database system is ready to accept connections
+2025-03-09 12:33:58.288 IST [20420] ERROR:  syntax error at or near "opy" at character 1
+2025-03-09 12:33:58.288 IST [20420] STATEMENT:  opy employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	WITH DELIMITER ',' json HEADER;
+2025-03-09 12:34:07.470 IST [20420] ERROR:  syntax error at or near "json" at character 126
+2025-03-09 12:34:07.470 IST [20420] STATEMENT:  copy employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	WITH DELIMITER ',' json HEADER;
+2025-03-09 12:38:26.715 IST [20420] ERROR:  syntax error at or near "FORMAT" at character 46
+2025-03-09 12:38:26.715 IST [20420] STATEMENT:  COPY my_table FROM '/path/to/file.csv' WITH (FORMAT JSON, DELIMITER ',', HEADER true);
+2025-03-09 12:39:13.312 IST [22486] ERROR:  syntax error at or near "FORMAT" at character 46
+2025-03-09 12:39:13.312 IST [22486] STATEMENT:  COPY my_table FROM '/path/to/file.csv' WITH (FORMAT JSON, DELIMITER ',', HEADER true);
+2025-03-09 12:41:07.671 IST [23712] ERROR:  syntax error at or near "FORMAT" at character 42
+2025-03-09 12:41:07.671 IST [23712] STATEMENT:  COPY my_table FROM '/path/to/file' WITH (FORMAT json);
+2025-03-09 12:43:15.930 IST [23712] ERROR:  syntax error at or near "/" at character 1
+2025-03-09 12:43:15.930 IST [23712] STATEMENT:  /copy employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	 WITH (FORMAT json);
+2025-03-09 12:43:28.169 IST [23712] ERROR:  syntax error at or near "FORMAT" at character 73
+2025-03-09 12:43:28.169 IST [23712] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT json);;
+2025-03-09 12:43:37.383 IST [23712] ERROR:  relation "employees" does not exist
+2025-03-09 12:43:37.383 IST [23712] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);;
+2025-03-09 12:43:52.532 IST [23712] ERROR:  relation "employees" does not exist
+2025-03-09 12:43:52.532 IST [23712] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);
+2025-03-09 12:44:30.943 IST [25348] ERROR:  relation "employees" does not exist
+2025-03-09 12:44:30.943 IST [25348] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);
+2025-03-09 12:45:13.099 IST [26605] ERROR:  relation "employees" does not exist
+2025-03-09 12:45:13.099 IST [26605] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);
+2025-03-09 12:46:28.270 IST [26793] ERROR:  relation "employees" does not exist
+2025-03-09 12:46:28.270 IST [26793] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);
+2025-03-09 12:49:27.798 IST [28895] ERROR:  relation "employees" does not exist
+2025-03-09 12:49:27.798 IST [28895] STATEMENT:  COPY  employees ( id, name, age, department, salary ) FROM STDIN  WITH (FORMAT csv);
+2025-03-09 12:49:41.495 IST [28895] ERROR:  relation "employees" does not exist
+2025-03-09 12:49:41.495 IST [28895] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	 WITH (FORMAT csv);
+2025-03-09 12:50:33.649 IST [30119] FATAL:  lock file "postmaster.pid" already exists
+2025-03-09 12:50:33.649 IST [30119] HINT:  Is another postmaster (PID 20201) running in data directory "/home/amalendu/project/postgresql-17.4/my_db"?
+2025-03-09 12:50:54.625 IST [20201] LOG:  received fast shutdown request
+2025-03-09 12:50:54.627 IST [20201] LOG:  aborting any active transactions
+2025-03-09 12:50:54.627 IST [20201] LOG:  background worker "logical replication launcher" (PID 20207) exited with exit code 1
+2025-03-09 12:50:54.627 IST [20202] LOG:  shutting down
+2025-03-09 12:50:54.629 IST [20202] LOG:  checkpoint starting: shutdown immediate
+2025-03-09 12:50:54.633 IST [20202] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.006 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1906838, redo lsn=0/1906838
+2025-03-09 12:50:54.635 IST [20201] LOG:  database system is shut down
+2025-03-09 12:50:54.737 IST [30270] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 12:50:54.737 IST [30270] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 12:50:54.737 IST [30270] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 12:50:54.739 IST [30270] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 12:50:54.743 IST [30273] LOG:  database system was shut down at 2025-03-09 12:50:54 IST
+2025-03-09 12:50:54.746 IST [30270] LOG:  database system is ready to accept connections
+2025-03-09 12:51:00.369 IST [30317] ERROR:  relation "employees" does not exist
+2025-03-09 12:51:00.369 IST [30317] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	 WITH (FORMAT csv);
+2025-03-09 12:51:53.198 IST [30317] ERROR:  invalid input syntax for type integer: "id"
+2025-03-09 12:51:53.198 IST [30317] CONTEXT:  COPY employees, line 1, column id: "id"
+2025-03-09 12:51:53.198 IST [30317] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	 WITH (FORMAT csv);
+2025-03-09 12:55:54.843 IST [30271] LOG:  checkpoint starting: time
+2025-03-09 12:55:58.197 IST [30271] LOG:  checkpoint complete: wrote 36 buffers (0.2%); 0 WAL file(s) added, 0 removed, 0 recycled; write=3.340 s, sync=0.006 s, total=3.355 s; sync files=28, longest=0.003 s, average=0.001 s; distance=124 kB, estimate=124 kB; lsn=0/19258E0, redo lsn=0/1925888
+2025-03-09 13:11:22.080 IST [30270] LOG:  received fast shutdown request
+2025-03-09 13:11:22.084 IST [30270] LOG:  aborting any active transactions
+2025-03-09 13:11:22.085 IST [30270] LOG:  background worker "logical replication launcher" (PID 30276) exited with exit code 1
+2025-03-09 13:11:22.085 IST [30271] LOG:  shutting down
+2025-03-09 13:11:22.086 IST [30271] LOG:  checkpoint starting: shutdown immediate
+2025-03-09 13:11:22.094 IST [30271] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.010 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=111 kB; lsn=0/1925990, redo lsn=0/1925990
+2025-03-09 13:11:22.096 IST [30270] LOG:  database system is shut down
+2025-03-09 13:11:22.195 IST [32741] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 13:11:22.195 IST [32741] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 13:11:22.195 IST [32741] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 13:11:22.197 IST [32741] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 13:11:22.201 IST [32744] LOG:  database system was shut down at 2025-03-09 13:11:22 IST
+2025-03-09 13:11:22.205 IST [32741] LOG:  database system is ready to accept connections
+2025-03-09 13:11:28.902 IST [32781] ERROR:  syntax error at or near "FORMAT" at character 114
+2025-03-09 13:11:28.902 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	 WITH (FORMAT json);
+2025-03-09 13:15:03.644 IST [32781] ERROR:  option "FORMAT" not recognized at character 113
+2025-03-09 13:15:03.644 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/Personal/notes/Notes/employee.csv'
+	WITH ("FORMAT" 'json');
+2025-03-09 13:16:22.299 IST [32742] LOG:  checkpoint starting: time
+2025-03-09 13:16:22.517 IST [32742] LOG:  checkpoint complete: wrote 5 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.205 s, sync=0.004 s, total=0.219 s; sync files=4, longest=0.003 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1925A98, redo lsn=0/1925A40
+2025-03-09 13:21:42.462 IST [32781] ERROR:  option "FORMAT" not recognized at character 102
+2025-03-09 13:21:42.462 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH ("FORMAT" 'json');
+2025-03-09 13:21:53.463 IST [32781] ERROR:  syntax error at or near "FORMAT" at character 102
+2025-03-09 13:21:53.463 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT json);
+2025-03-09 13:22:34.504 IST [32781] ERROR:  extra data after last expected column
+2025-03-09 13:22:34.504 IST [32781] CONTEXT:  COPY employees, line 1: "..."
+2025-03-09 13:22:34.504 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
