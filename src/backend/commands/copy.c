@@ -496,8 +496,10 @@ ProcessCopyOptions(ParseState *pstate,
 				opts_out->csv_mode = true;
 			else if (strcmp(fmt, "binary") == 0)
 				opts_out->binary = true;
-			else if (strcmp(fmt,"json") == 0)
-				opts_out->json_mode = true;
+			else if (strcmp(fmt,"json") == 0){
+				elog(NOTICE, "JSON mode detected in COPY command");
+				opts_out->json_mode = true;	
+			}
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

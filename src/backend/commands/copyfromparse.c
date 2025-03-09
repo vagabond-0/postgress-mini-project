@@ -936,6 +936,8 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 					 */
 					string = NULL;
 				}
+			}else if(cstate->opts.json_mode){
+				elog(NOTICE, "JSON parsing mode detected  COPY command");
 			}
 
 			cstate->cur_attname = NameStr(att->attname);
