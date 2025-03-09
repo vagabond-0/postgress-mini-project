@@ -1417,7 +1417,8 @@ BeginCopyFrom(ParseState *pstate,
 	cstate->rel = rel;
 
 	tupDesc = RelationGetDescr(cstate->rel);
-
+	elog(NOTICE, "TupleDesc details:");
+    elog(NOTICE, "Number of attributes: %d", tupDesc->natts);
 	/* process common options or initialization */
 
 	/* Generate or convert list of attributes to process */

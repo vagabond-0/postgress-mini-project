@@ -119,3 +119,61 @@
 2025-03-09 13:22:34.504 IST [32781] STATEMENT:  COPY employees(id, name, age, department, salary)
 	FROM '/home/amalendu/college/employees.json'
 	WITH (FORMAT 'json');
+2025-03-09 13:59:44.924 IST [32741] LOG:  received fast shutdown request
+2025-03-09 13:59:44.928 IST [32741] LOG:  aborting any active transactions
+2025-03-09 13:59:44.930 IST [32741] LOG:  background worker "logical replication launcher" (PID 32747) exited with exit code 1
+2025-03-09 13:59:44.930 IST [32742] LOG:  shutting down
+2025-03-09 13:59:44.932 IST [32742] LOG:  checkpoint starting: shutdown immediate
+2025-03-09 13:59:44.938 IST [32742] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.009 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1925B48, redo lsn=0/1925B48
+2025-03-09 13:59:44.941 IST [32741] LOG:  database system is shut down
+2025-03-09 13:59:45.041 IST [38025] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 13:59:45.042 IST [38025] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 13:59:45.042 IST [38025] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 13:59:45.044 IST [38025] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 13:59:45.049 IST [38028] LOG:  database system was shut down at 2025-03-09 13:59:44 IST
+2025-03-09 13:59:45.055 IST [38025] LOG:  database system is ready to accept connections
+2025-03-09 13:59:50.306 IST [38038] ERROR:  invalid input syntax for type integer: "["
+2025-03-09 13:59:50.306 IST [38038] CONTEXT:  COPY employees, line 1, column id: "["
+2025-03-09 13:59:50.306 IST [38038] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-09 14:04:45.150 IST [38026] LOG:  checkpoint starting: time
+2025-03-09 14:04:45.197 IST [38026] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.007 s, sync=0.002 s, total=0.048 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1925C50, redo lsn=0/1925BF8
+2025-03-09 14:10:44.046 IST [38025] LOG:  received fast shutdown request
+2025-03-09 14:10:44.048 IST [38025] LOG:  aborting any active transactions
+2025-03-09 14:10:44.049 IST [38025] LOG:  background worker "logical replication launcher" (PID 38031) exited with exit code 1
+2025-03-09 14:10:44.049 IST [38026] LOG:  shutting down
+2025-03-09 14:10:44.051 IST [38026] LOG:  checkpoint starting: shutdown immediate
+2025-03-09 14:10:44.059 IST [38026] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.010 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1925D00, redo lsn=0/1925D00
+2025-03-09 14:10:44.063 IST [38025] LOG:  database system is shut down
+2025-03-09 14:10:44.165 IST [39928] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 14:10:44.166 IST [39928] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 14:10:44.166 IST [39928] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 14:10:44.168 IST [39928] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 14:10:44.173 IST [39931] LOG:  database system was shut down at 2025-03-09 14:10:44 IST
+2025-03-09 14:10:44.179 IST [39928] LOG:  database system is ready to accept connections
+2025-03-09 14:10:49.167 IST [39964] ERROR:  invalid input syntax for type integer: "["
+2025-03-09 14:10:49.167 IST [39964] CONTEXT:  COPY employees, line 1, column id: "["
+2025-03-09 14:10:49.167 IST [39964] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-09 14:15:44.272 IST [39929] LOG:  checkpoint starting: time
+2025-03-09 14:15:44.286 IST [39929] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.003 s, total=0.015 s; sync files=2, longest=0.003 s, average=0.002 s; distance=0 kB, estimate=0 kB; lsn=0/1925E08, redo lsn=0/1925DB0
+2025-03-09 15:06:01.074 IST [39928] LOG:  received fast shutdown request
+2025-03-09 15:06:01.076 IST [39928] LOG:  aborting any active transactions
+2025-03-09 15:06:01.078 IST [39928] LOG:  background worker "logical replication launcher" (PID 39934) exited with exit code 1
+2025-03-09 15:06:01.078 IST [39929] LOG:  shutting down
+2025-03-09 15:06:01.080 IST [39929] LOG:  checkpoint starting: shutdown immediate
+2025-03-09 15:06:01.088 IST [39929] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.010 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1925EB8, redo lsn=0/1925EB8
+2025-03-09 15:06:01.091 IST [39928] LOG:  database system is shut down
+2025-03-09 15:06:01.191 IST [44056] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-09 15:06:01.193 IST [44056] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-09 15:06:01.193 IST [44056] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-09 15:06:01.196 IST [44056] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-09 15:06:01.201 IST [44059] LOG:  database system was shut down at 2025-03-09 15:06:01 IST
+2025-03-09 15:06:01.206 IST [44056] LOG:  database system is ready to accept connections
+2025-03-09 15:06:08.359 IST [44106] ERROR:  invalid input syntax for type integer: "["
+2025-03-09 15:06:08.359 IST [44106] CONTEXT:  COPY employees, line 1, column id: "["
+2025-03-09 15:06:08.359 IST [44106] STATEMENT:  COPY employees(id, name, age, department, salary)
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
