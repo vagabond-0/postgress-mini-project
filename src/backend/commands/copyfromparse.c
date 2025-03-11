@@ -939,8 +939,6 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 					 */
 					string = NULL;
 				}
-			}else if(cstate->opts.json_mode){
-				elog(NOTICE, "JSON parsing mode detected  COPY command");
 			}
 
 			cstate->cur_attname = NameStr(att->attname);
@@ -2049,11 +2047,18 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
     int         bracket_level = 0;
     TupleDesc   tupDesc = RelationGetDescr(cstate->rel);
 
-    /* Initialize buffers */
     initStringInfo(&json_buf);
     initStringInfo(&current_object);
 
-    /* Initialize raw_fields array */	
+	if (cstate->max_fields <= 0)
+	{
+		if (cstate->line_buf.len != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					 errmsg("extra data after last expected column")));
+		return 0;
+	}
+
     if (cstate->max_fields < tupDesc->natts)
     {
         cstate->max_fields = tupDesc->natts;
@@ -2061,13 +2066,11 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                                     cstate->max_fields * sizeof(char *));
     }
 
-    /* Initialize all fields to NULL */
     for (int i = 0; i < cstate->max_fields; i++)
     {
         cstate->raw_fields[i] = NULL;
     }
 
-    /* Process only the current line */
     appendBinaryStringInfo(&json_buf, 
                           cstate->line_buf.data,
                           cstate->line_buf.len);
@@ -2094,7 +2097,7 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                 if (brace_level == 0 && in_object) {
                     appendStringInfoChar(&current_object, c);
                     
-                    /* Process each column in the tuple */
+                 
                     for (int i = 0; i < tupDesc->natts; i++)
                     {
                         Form_pg_attribute att = TupleDescAttr(tupDesc, i);
@@ -2102,34 +2105,34 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                         StringInfoData value;
                         initStringInfo(&value);
                         
-                        /* Create the JSON key pattern */
+                       
                         StringInfoData pattern;
                         initStringInfo(&pattern);
                         appendStringInfo(&pattern, "\"%s\"", attname);
                         
-                        /* Find the key in the JSON object */
+                        
                         char *key_pos = strstr(current_object.data, pattern.data);
                         if (key_pos != NULL)
                         {
-                            /* Move to the value part */
+                          
                             char *value_start = strchr(key_pos + pattern.len, ':');
                             if (value_start)
                             {
-                                value_start++; /* Skip the colon */
+                                value_start++; 
                                 
-                                /* Skip whitespace */
+                                
                                 while (isspace((unsigned char) *value_start))
                                     value_start++;
                                 
-                                /* Extract the value */
+                               
                                 bool in_val_string = false;
                                 bool val_escaped = false;
                                 
                                 if (*value_start == '"')
                                 {
-                                    /* String value */
+                                   
                                     in_val_string = true;
-                                    value_start++; /* Skip the opening quote */
+                                    value_start++; 
                                     
                                     while (*value_start)
                                     {
@@ -2151,7 +2154,7 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                                 }
                                 else
                                 {
-                                    /* Number or other value */
+                                    
                                     while (*value_start && *value_start != ',' && *value_start != '}')
                                     {
                                         if (!isspace((unsigned char) *value_start))
@@ -2160,7 +2163,7 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                                     }
                                 }
                                 
-                                /* Store the value */
+                                
                                 cstate->raw_fields[i] = pstrdup(value.data);
                             }
                         }
@@ -2171,7 +2174,7 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                     
                     fieldno++;
                     in_object = false;
-                    break; /* Stop after processing one JSON object */
+                    break; 
                 }
             }
             else if (c == '[') {
@@ -2197,8 +2200,24 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
             appendStringInfoChar(&current_object, c);
         }
     }
+	for (int i = 0; i < tupDesc->natts; i++){
+    	Form_pg_attribute att = TupleDescAttr(tupDesc, i);
 
-    /* Clean up */
+    	if (cstate->raw_fields[i] == NULL && !att->attnotnull)  
+    	{
+       		cstate->raw_fields[i] = pstrdup("NULL");
+    	}
+    	else if (cstate->raw_fields[i] == NULL)
+    	{
+        	ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("missing required column \"%s\" in JSON data",
+                        NameStr(att->attname))));
+    	}
+}
+
+
+   
     pfree(json_buf.data);
     pfree(current_object.data);
 
