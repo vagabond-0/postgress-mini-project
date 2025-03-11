@@ -2357,10 +2357,8 @@ CopyReadLineJsonBy(CopyFromState cstate)
     bool        in_string = false;
     bool        escaped = false;
     int         brace_level = 0;
-    int         bracket_level = 0;
     bool        found_start = false;
     bool        in_outer_array = false;
-    int         start_pos = 0;
     StringInfoData temp_buf;
 
     elog(NOTICE, "Starting to read new JSON object");
@@ -2391,6 +2389,14 @@ CopyReadLineJsonBy(CopyFromState cstate)
             copy_input_buf[input_buf_ptr] == ','))
     {
         input_buf_ptr++;
+    }
+	if (input_buf_ptr < copy_buf_len && copy_input_buf[input_buf_ptr] == ']')
+    {
+        elog(NOTICE, "Found end of array - stopping");
+        cstate->input_buf_index = input_buf_ptr + 1;
+        pfree(temp_buf.data);
+        resetStringInfo(&cstate->line_buf);  // Clear the line buffer
+        return true;  // Signal end of input
     }
     cstate->input_buf_index = input_buf_ptr;
 
@@ -2425,7 +2431,8 @@ CopyReadLineJsonBy(CopyFromState cstate)
 
         c = copy_input_buf[input_buf_ptr++];
 
-       
+        
+
         if (!found_start)
         {
             if (c == '{')
@@ -2435,13 +2442,6 @@ CopyReadLineJsonBy(CopyFromState cstate)
                 brace_level = 1;
                 resetStringInfo(&temp_buf);
                 appendStringInfoChar(&temp_buf, c);
-            }
-            else if (c == ']' && in_outer_array)
-            {
-                elog(NOTICE, "Found end of array");
-                cstate->input_buf_index = input_buf_ptr;
-                pfree(temp_buf.data);
-                return true;
             }
             continue;
         }
