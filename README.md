@@ -95,11 +95,13 @@ WITH (FORMAT 'json');
 The JSON file should contain one complete JSON object per line (JSON Lines format). Each object's fields should match the table columns:
 
 ```json
+[
 {"id": 1, "name": "John Smith", "age": 32, "department": "Engineering", "salary": 85000}
 {"id": 2, "name": "Sara Johnson", "age": 28, "department": "Marketing", "salary": 72000}
 {"id": 3, "name": "Michael Brown", "age": 45, "department": "Finance", "salary": 110000}
 {"id": 4, "name": "Patricia Davis", "age": 37, "department": "Human Resources", "salary": 65000}
 {"id": 5, "name": "Robert Wilson", "age": 29, "department": "Engineering", "salary": 78000}
+]
 ```
 
 ### Other COPY Options
