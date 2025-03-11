@@ -1643,3 +1643,251 @@
 2025-03-12 03:01:22.157 IST [72862] STATEMENT:  COPY employees
 	FROM '/home/amalendu/college/employees.json'
 	WITH (FORMAT 'json');
+2025-03-12 03:06:21.206 IST [72848] LOG:  checkpoint starting: time
+2025-03-12 03:06:21.823 IST [72848] LOG:  checkpoint complete: wrote 6 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.603 s, sync=0.004 s, total=0.618 s; sync files=4, longest=0.004 s, average=0.001 s; distance=10 kB, estimate=10 kB; lsn=0/1948C10, redo lsn=0/1948BB8
+2025-03-12 03:16:28.908 IST [72847] LOG:  received fast shutdown request
+2025-03-12 03:16:28.912 IST [72847] LOG:  aborting any active transactions
+2025-03-12 03:16:28.914 IST [72847] LOG:  background worker "logical replication launcher" (PID 72853) exited with exit code 1
+2025-03-12 03:16:28.914 IST [72848] LOG:  shutting down
+2025-03-12 03:16:28.916 IST [72848] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:16:28.926 IST [72848] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.012 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=9 kB; lsn=0/1948CC0, redo lsn=0/1948CC0
+2025-03-12 03:16:28.933 IST [72847] LOG:  database system is shut down
+2025-03-12 03:16:29.040 IST [80654] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:16:29.042 IST [80654] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:16:29.042 IST [80654] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:16:29.044 IST [80654] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:16:29.052 IST [80657] LOG:  database system was shut down at 2025-03-12 03:16:28 IST
+2025-03-12 03:16:29.061 IST [80654] LOG:  database system is ready to accept connections
+2025-03-12 03:16:32.173 IST [80654] LOG:  server process (PID 80667) was terminated by signal 11: Segmentation fault
+2025-03-12 03:16:32.173 IST [80654] DETAIL:  Failed process was running: COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:16:32.173 IST [80654] LOG:  terminating any other active server processes
+2025-03-12 03:16:32.174 IST [80676] FATAL:  the database system is in recovery mode
+2025-03-12 03:16:32.175 IST [80654] LOG:  all server processes terminated; reinitializing
+2025-03-12 03:16:32.209 IST [80677] LOG:  database system was interrupted; last known up at 2025-03-12 03:16:29 IST
+2025-03-12 03:16:32.298 IST [80677] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-12 03:16:32.303 IST [80677] LOG:  invalid record length at 0/1948D38: expected at least 24, got 0
+2025-03-12 03:16:32.303 IST [80677] LOG:  redo is not required
+2025-03-12 03:16:32.309 IST [80678] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-12 03:16:32.323 IST [80678] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.002 s, total=0.016 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1948D38, redo lsn=0/1948D38
+2025-03-12 03:16:32.326 IST [80654] LOG:  database system is ready to accept connections
+2025-03-12 03:17:33.683 IST [80654] LOG:  received fast shutdown request
+2025-03-12 03:17:33.686 IST [80654] LOG:  aborting any active transactions
+2025-03-12 03:17:33.688 IST [80654] LOG:  background worker "logical replication launcher" (PID 80682) exited with exit code 1
+2025-03-12 03:17:33.689 IST [80678] LOG:  shutting down
+2025-03-12 03:17:33.692 IST [80678] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:17:33.701 IST [80678] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.013 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1948DE8, redo lsn=0/1948DE8
+2025-03-12 03:17:33.707 IST [80654] LOG:  database system is shut down
+2025-03-12 03:17:33.819 IST [82080] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:17:33.821 IST [82080] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:17:33.822 IST [82080] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:17:33.824 IST [82080] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:17:33.835 IST [82083] LOG:  database system was shut down at 2025-03-12 03:17:33 IST
+2025-03-12 03:17:33.842 IST [82080] LOG:  database system is ready to accept connections
+2025-03-12 03:17:38.416 IST [82093] ERROR:  missing data for column "id"
+2025-03-12 03:17:38.416 IST [82093] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:17:38.416 IST [82093] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:21:46.702 IST [82080] LOG:  received fast shutdown request
+2025-03-12 03:21:46.730 IST [82080] LOG:  aborting any active transactions
+2025-03-12 03:21:46.732 IST [82080] LOG:  background worker "logical replication launcher" (PID 82086) exited with exit code 1
+2025-03-12 03:21:46.732 IST [82081] LOG:  shutting down
+2025-03-12 03:21:46.735 IST [82081] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:21:46.748 IST [82081] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.016 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1948E98, redo lsn=0/1948E98
+2025-03-12 03:21:46.754 IST [82080] LOG:  database system is shut down
+2025-03-12 03:21:46.832 IST [83559] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:21:46.834 IST [83559] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:21:46.834 IST [83559] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:21:46.835 IST [83559] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:21:46.843 IST [83562] LOG:  database system was shut down at 2025-03-12 03:21:46 IST
+2025-03-12 03:21:46.851 IST [83559] LOG:  database system is ready to accept connections
+2025-03-12 03:21:49.844 IST [83572] ERROR:  missing data for column "id"
+2025-03-12 03:21:49.844 IST [83572] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:21:49.844 IST [83572] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:26:25.623 IST [83559] LOG:  received fast shutdown request
+2025-03-12 03:26:25.626 IST [83559] LOG:  aborting any active transactions
+2025-03-12 03:26:25.627 IST [83559] LOG:  background worker "logical replication launcher" (PID 83565) exited with exit code 1
+2025-03-12 03:26:25.627 IST [83560] LOG:  shutting down
+2025-03-12 03:26:25.629 IST [83560] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:26:25.641 IST [83560] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1948F48, redo lsn=0/1948F48
+2025-03-12 03:26:25.651 IST [83559] LOG:  database system is shut down
+2025-03-12 03:26:25.752 IST [85452] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:26:25.755 IST [85452] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:26:25.755 IST [85452] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:26:25.757 IST [85452] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:26:25.763 IST [85455] LOG:  database system was shut down at 2025-03-12 03:26:25 IST
+2025-03-12 03:26:25.770 IST [85452] LOG:  database system is ready to accept connections
+2025-03-12 03:26:31.725 IST [85495] ERROR:  missing data for column "id"
+2025-03-12 03:26:31.725 IST [85495] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:26:31.725 IST [85495] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:31:25.863 IST [85453] LOG:  checkpoint starting: time
+2025-03-12 03:31:25.876 IST [85453] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1949050, redo lsn=0/1948FF8
+2025-03-12 03:31:32.549 IST [85452] LOG:  received fast shutdown request
+2025-03-12 03:31:32.553 IST [85452] LOG:  aborting any active transactions
+2025-03-12 03:31:32.554 IST [85452] LOG:  background worker "logical replication launcher" (PID 85458) exited with exit code 1
+2025-03-12 03:31:32.554 IST [85453] LOG:  shutting down
+2025-03-12 03:31:32.556 IST [85453] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:31:32.562 IST [85453] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.008 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/1949100, redo lsn=0/1949100
+2025-03-12 03:31:32.570 IST [85452] LOG:  database system is shut down
+2025-03-12 03:31:32.674 IST [87381] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:31:32.676 IST [87381] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:31:32.676 IST [87381] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:31:32.678 IST [87381] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:31:32.684 IST [87384] LOG:  database system was shut down at 2025-03-12 03:31:32 IST
+2025-03-12 03:31:32.690 IST [87381] LOG:  database system is ready to accept connections
+2025-03-12 03:31:35.083 IST [87394] ERROR:  missing data for column "id"
+2025-03-12 03:31:35.083 IST [87394] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:31:35.083 IST [87394] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:32:49.490 IST [87381] LOG:  received fast shutdown request
+2025-03-12 03:32:49.515 IST [87381] LOG:  aborting any active transactions
+2025-03-12 03:32:49.517 IST [87381] LOG:  background worker "logical replication launcher" (PID 87387) exited with exit code 1
+2025-03-12 03:32:49.517 IST [87382] LOG:  shutting down
+2025-03-12 03:32:49.519 IST [87382] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:32:49.532 IST [87382] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/19491B0, redo lsn=0/19491B0
+2025-03-12 03:32:49.539 IST [87381] LOG:  database system is shut down
+2025-03-12 03:32:49.629 IST [88767] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:32:49.631 IST [88767] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:32:49.631 IST [88767] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:32:49.633 IST [88767] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:32:49.640 IST [88770] LOG:  database system was shut down at 2025-03-12 03:32:49 IST
+2025-03-12 03:32:49.647 IST [88767] LOG:  database system is ready to accept connections
+2025-03-12 03:32:52.292 IST [88780] ERROR:  missing data for column "id"
+2025-03-12 03:32:52.292 IST [88780] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:32:52.292 IST [88780] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+TRAP: failed Assert("!HdrMaskIsExternal(chunk->hdrmask) || HdrMaskCheckMagic(chunk->hdrmask)"), File: "../../../../src/include/utils/memutils_memorychunk.h", Line: 210, PID: 88780
+postgres: amalendu new_db [local] COPY(ExceptionalCondition+0x69) [0x6058cad0e709]
+postgres: amalendu new_db [local] COPY(AllocSetCheck+0x643) [0x6058cad36b23]
+postgres: amalendu new_db [local] COPY(AllocSetDelete+0x26) [0x6058cad36c86]
+postgres: amalendu new_db [local] COPY(MemoryContextDelete+0x9b) [0x6058cad3e6eb]
+postgres: amalendu new_db [local] COPY(MemoryContextDeleteChildren+0x25) [0x6058cad3e785]
+postgres: amalendu new_db [local] COPY(AtAbort_Portals+0xb7) [0x6058cad40377]
+postgres: amalendu new_db [local] COPY(+0x22dcf8) [0x6058ca8cacf8]
+postgres: amalendu new_db [local] COPY(AbortCurrentTransaction+0x32) [0x6058ca8cb6a2]
+postgres: amalendu new_db [local] COPY(PostgresMain+0x111b) [0x6058cabc811b]
+postgres: amalendu new_db [local] COPY(BackendMain+0x4d) [0x6058cabc2e4d]
+postgres: amalendu new_db [local] COPY(postmaster_child_launch+0xb5) [0x6058cab1f4d5]
+postgres: amalendu new_db [local] COPY(+0x4863c7) [0x6058cab233c7]
+postgres: amalendu new_db [local] COPY(PostmasterMain+0xe65) [0x6058cab25145]
+postgres: amalendu new_db [local] COPY(main+0x20e) [0x6058ca80e5ce]
+/usr/lib/libc.so.6(+0x27488) [0x7374cc21e488]
+/usr/lib/libc.so.6(__libc_start_main+0x8c) [0x7374cc21e54c]
+postgres: amalendu new_db [local] COPY(_start+0x25) [0x6058ca80e905]
+2025-03-12 03:32:52.733 IST [88767] LOG:  server process (PID 88780) was terminated by signal 6: Aborted
+2025-03-12 03:32:52.733 IST [88767] DETAIL:  Failed process was running: COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:32:52.733 IST [88767] LOG:  terminating any other active server processes
+2025-03-12 03:32:52.733 IST [88812] FATAL:  the database system is in recovery mode
+2025-03-12 03:32:52.733 IST [88767] LOG:  all server processes terminated; reinitializing
+2025-03-12 03:32:52.759 IST [88813] LOG:  database system was interrupted; last known up at 2025-03-12 03:32:49 IST
+2025-03-12 03:32:52.852 IST [88813] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-12 03:32:52.855 IST [88813] LOG:  invalid record length at 0/1949228: expected at least 24, got 0
+2025-03-12 03:32:52.855 IST [88813] LOG:  redo is not required
+2025-03-12 03:32:52.860 IST [88814] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-12 03:32:52.870 IST [88814] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.002 s, total=0.012 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1949228, redo lsn=0/1949228
+2025-03-12 03:32:52.873 IST [88767] LOG:  database system is ready to accept connections
+2025-03-12 03:36:46.554 IST [88767] LOG:  received fast shutdown request
+2025-03-12 03:36:46.557 IST [88767] LOG:  aborting any active transactions
+2025-03-12 03:36:46.558 IST [88767] LOG:  background worker "logical replication launcher" (PID 88819) exited with exit code 1
+2025-03-12 03:36:46.558 IST [88814] LOG:  shutting down
+2025-03-12 03:36:46.559 IST [88814] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:36:46.566 IST [88814] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.008 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/19492D8, redo lsn=0/19492D8
+2025-03-12 03:36:46.570 IST [88767] LOG:  database system is shut down
+2025-03-12 03:36:46.681 IST [91260] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:36:46.682 IST [91260] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:36:46.682 IST [91260] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:36:46.684 IST [91260] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:36:46.689 IST [91263] LOG:  database system was shut down at 2025-03-12 03:36:46 IST
+2025-03-12 03:36:46.695 IST [91260] LOG:  database system is ready to accept connections
+2025-03-12 03:36:48.982 IST [91319] ERROR:  missing data for column "id"
+2025-03-12 03:36:48.982 IST [91319] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:36:48.982 IST [91319] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:41:20.398 IST [91260] LOG:  received fast shutdown request
+2025-03-12 03:41:20.402 IST [91260] LOG:  aborting any active transactions
+2025-03-12 03:41:20.403 IST [91260] LOG:  background worker "logical replication launcher" (PID 91266) exited with exit code 1
+2025-03-12 03:41:20.404 IST [91261] LOG:  shutting down
+2025-03-12 03:41:20.406 IST [91261] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:41:20.421 IST [91261] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.017 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/1949388, redo lsn=0/1949388
+2025-03-12 03:41:20.426 IST [91260] LOG:  database system is shut down
+2025-03-12 03:41:20.519 IST [92771] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:41:20.521 IST [92771] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:41:20.521 IST [92771] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:41:20.523 IST [92771] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:41:20.531 IST [92774] LOG:  database system was shut down at 2025-03-12 03:41:20 IST
+2025-03-12 03:41:20.536 IST [92771] LOG:  database system is ready to accept connections
+2025-03-12 03:41:23.851 IST [92784] ERROR:  missing data for column "id"
+2025-03-12 03:41:23.851 IST [92784] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:41:23.851 IST [92784] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:46:20.610 IST [92772] LOG:  checkpoint starting: time
+2025-03-12 03:46:20.827 IST [92772] LOG:  checkpoint complete: wrote 5 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.205 s, sync=0.004 s, total=0.218 s; sync files=4, longest=0.003 s, average=0.001 s; distance=1 kB, estimate=1 kB; lsn=0/1949A68, redo lsn=0/1949A10
+2025-03-12 03:46:44.271 IST [92784] ERROR:  missing data for column "id"
+2025-03-12 03:46:44.271 IST [92784] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:46:44.271 IST [92784] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:46:47.842 IST [92784] ERROR:  COPY format "jsn" not recognized at character 67
+2025-03-12 03:46:47.842 IST [92784] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'jsn');
+2025-03-12 03:46:50.822 IST [92784] ERROR:  missing data for column "id"
+2025-03-12 03:46:50.822 IST [92784] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:46:50.822 IST [92784] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:47:27.808 IST [92771] LOG:  received fast shutdown request
+2025-03-12 03:47:27.811 IST [92771] LOG:  aborting any active transactions
+2025-03-12 03:47:27.812 IST [92771] LOG:  background worker "logical replication launcher" (PID 92777) exited with exit code 1
+2025-03-12 03:47:27.813 IST [92772] LOG:  shutting down
+2025-03-12 03:47:27.814 IST [92772] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:47:27.825 IST [92772] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.002 s, sync=0.002 s, total=0.013 s; sync files=2, longest=0.002 s, average=0.001 s; distance=1 kB, estimate=1 kB; lsn=0/1949FB0, redo lsn=0/1949FB0
+2025-03-12 03:47:27.833 IST [92771] LOG:  database system is shut down
+2025-03-12 03:47:27.941 IST [94813] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:47:27.943 IST [94813] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:47:27.943 IST [94813] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:47:27.944 IST [94813] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:47:27.951 IST [94816] LOG:  database system was shut down at 2025-03-12 03:47:27 IST
+2025-03-12 03:47:27.957 IST [94813] LOG:  database system is ready to accept connections
+2025-03-12 03:47:30.453 IST [94826] ERROR:  missing data for column "id"
+2025-03-12 03:47:30.453 IST [94826] CONTEXT:  COPY employees, line 5: "]
+	"
+2025-03-12 03:47:30.453 IST [94826] STATEMENT:  COPY employees
+	FROM '/home/amalendu/college/employees.json'
+	WITH (FORMAT 'json');
+2025-03-12 03:52:28.001 IST [94814] LOG:  checkpoint starting: time
+2025-03-12 03:52:28.016 IST [94814] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.002 s, total=0.015 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194A0D0, redo lsn=0/194A078
+2025-03-12 03:53:04.589 IST [94813] LOG:  received fast shutdown request
+2025-03-12 03:53:04.592 IST [94813] LOG:  aborting any active transactions
+2025-03-12 03:53:04.593 IST [94813] LOG:  background worker "logical replication launcher" (PID 94819) exited with exit code 1
+2025-03-12 03:53:04.593 IST [94814] LOG:  shutting down
+2025-03-12 03:53:04.594 IST [94814] LOG:  checkpoint starting: shutdown immediate
+2025-03-12 03:53:04.599 IST [94814] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.007 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/194A180, redo lsn=0/194A180
+2025-03-12 03:53:04.603 IST [94813] LOG:  database system is shut down
+2025-03-12 03:53:04.715 IST [97113] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-12 03:53:04.717 IST [97113] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-12 03:53:04.717 IST [97113] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-12 03:53:04.718 IST [97113] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-12 03:53:04.723 IST [97116] LOG:  database system was shut down at 2025-03-12 03:53:04 IST
+2025-03-12 03:53:04.730 IST [97113] LOG:  database system is ready to accept connections
