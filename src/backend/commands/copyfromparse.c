@@ -167,6 +167,10 @@ static inline bool CopyGetInt16(CopyFromState cstate, int16 *val);
 static void CopyLoadInputBuf(CopyFromState cstate);
 static int	CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes);
 
+/* Function for handling Json*/
+static bool CopyReadLineJson(CopyFromState cstate);
+static bool CopyReadLineJsonBy(CopyFromState cstate);
+
 void
 ReceiveCopyBegin(CopyFromState cstate)
 {
@@ -818,25 +822,50 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 
 	cstate->cur_lineno++;
 
-	/* Actually read the line into memory here */
-	done = CopyReadLine(cstate);
-
-	/*
-	 * EOF at start of line means we're done.  If we see EOF after some
-	 * characters, we act as though it was newline followed by EOF, ie,
-	 * process the line and then exit loop on next iteration.
-	 */
-	if (done && cstate->line_buf.len == 0)
-		return false;
-
+	
 	/* Parse the line into de-escaped field values */
-	if (cstate->opts.csv_mode)
-		fldct = CopyReadAttributesCSV(cstate);
-	else if(cstate->opts.json_mode)
-		fldct = CopyReadAttributesJsonArray(cstate);
-	else
-		fldct = CopyReadAttributesText(cstate);
+	if (cstate->opts.csv_mode){
+		/* Actually read the line into memory here */
+		done = CopyReadLine(cstate);
 
+		/*
+			* EOF at start of line means we're done.  If we see EOF after some
+			* characters, we act as though it was newline followed by EOF, ie,
+			* process the line and then exit loop on next iteration.
+		*/
+		if (done && cstate->line_buf.len == 0)
+			return false;
+
+		fldct = CopyReadAttributesCSV(cstate);
+	}
+	else if(cstate->opts.json_mode){
+		/* Actually read the line into memory here */
+		done = CopyReadLineJson(cstate);
+
+		/*
+			* EOF at start of line means we're done.  If we see EOF after some
+			* characters, we act as though it was newline followed by EOF, ie,
+			* process the line and then exit loop on next iteration.
+		*/
+		if (done && cstate->line_buf.len == 0)
+			return false;
+		elog(NOTICE,"The function is called");
+		fldct = CopyReadAttributesJsonArray(cstate);
+	}
+	else{
+		/* Actually read the line into memory here */
+		done = CopyReadLine(cstate);
+
+		/*
+			* EOF at start of line means we're done.  If we see EOF after some
+			* characters, we act as though it was newline followed by EOF, ie,
+			* process the line and then exit loop on next iteration.
+		*/
+		if (done && cstate->line_buf.len == 0)
+			return false;
+		
+		fldct = CopyReadAttributesText(cstate);
+	}
 	*fields = cstate->raw_fields;
 	*nfields = fldct;
 	return true;
@@ -939,8 +968,6 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 					 */
 					string = NULL;
 				}
-			}else if(cstate->opts.json_mode){
-				elog(NOTICE, "JSON parsing mode detected  COPY command");
 			}
 
 			cstate->cur_attname = NameStr(att->attname);
@@ -2037,26 +2064,40 @@ CopyReadBinaryAttribute(CopyFromState cstate, FmgrInfo *flinfo,
 	return result;
 }
 
+
+//handles here json file format 
 static int
 CopyReadAttributesJsonArray(CopyFromState cstate)
 {
     int         fieldno = 0;
     StringInfoData json_buf;
     StringInfoData current_object;
-    bool        first_line = true;
-    bool        done = false;
     bool        in_object = false;
-    bool        in_string = false;
+    bool        in_string = false;	
     bool        escaped = false;
     int         brace_level = 0;
     int         bracket_level = 0;
     TupleDesc   tupDesc = RelationGetDescr(cstate->rel);
+	elog(NOTICE, "Input data: %s", cstate->line_buf.data);
 
-    /* Initialize buffers */
+	if (cstate->line_buf.data[0] == ']')
+    {
+        elog(NOTICE, "End of JSON array reached");
+        return 0;  
+    }
+
     initStringInfo(&json_buf);
     initStringInfo(&current_object);
 
-    /* Initialize raw_fields array */
+	if (cstate->max_fields <= 0)
+	{
+		if (cstate->line_buf.len != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					 errmsg("extra data after last expected column")));
+		return 0;
+	}
+
     if (cstate->max_fields < tupDesc->natts)
     {
         cstate->max_fields = tupDesc->natts;
@@ -2064,160 +2105,400 @@ CopyReadAttributesJsonArray(CopyFromState cstate)
                                     cstate->max_fields * sizeof(char *));
     }
 
-    /* Initialize all fields to NULL */
     for (int i = 0; i < cstate->max_fields; i++)
     {
         cstate->raw_fields[i] = NULL;
     }
 
-    /* Read and process the JSON content */
-    do {
-        if (!first_line) {
-            appendStringInfoChar(&json_buf, '\n');
-        }
-        appendBinaryStringInfo(&json_buf, 
-                             cstate->line_buf.data,
-                             cstate->line_buf.len);
-        first_line = false;
+    appendBinaryStringInfo(&json_buf, 
+                          cstate->line_buf.data,
+                          cstate->line_buf.len);
 
-        char *cur_ptr = json_buf.data;
-        char *end_ptr = json_buf.data + json_buf.len;
-        
-        while (cur_ptr < end_ptr) {
-            char c = *cur_ptr++;
+    char *cur_ptr = json_buf.data;
+    char *end_ptr = json_buf.data + json_buf.len;
+    
+    while (cur_ptr < end_ptr) {
+        char c = *cur_ptr++;
 
-            if (!in_string) {
-                if (c == '"') {
-                    in_string = true;
+        if (!in_string) {
+            if (c == '"') {
+                in_string = true;
+            }
+            else if (c == '{') {
+                brace_level++;
+                if (brace_level == 1) {
+                    in_object = true;
+                    resetStringInfo(&current_object);
                 }
-                else if (c == '{') {
-                    brace_level++;
-                    if (brace_level == 1) {
-                        in_object = true;
-                        resetStringInfo(&current_object);
-                    }
-                }
-                else if (c == '}') {
-                    brace_level--;
-                    if (brace_level == 0 && in_object) {
-                        appendStringInfoChar(&current_object, c);
+            }
+            else if (c == '}') {
+                brace_level--;
+                if (brace_level == 0 && in_object) {
+                    appendStringInfoChar(&current_object, c);
+                    
+                 
+                    for (int i = 0; i < tupDesc->natts; i++)
+                    {
+                        Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+                        const char *attname = NameStr(att->attname);
+                        StringInfoData value;
+                        initStringInfo(&value);
                         
-                        /* Process each column in the tuple */
-                        for (int i = 0; i < tupDesc->natts; i++)
+                       
+                        StringInfoData pattern;
+                        initStringInfo(&pattern);
+                        appendStringInfo(&pattern, "\"%s\"", attname);
+                        
+                        
+                        char *key_pos = strstr(current_object.data, pattern.data);
+                        if (key_pos != NULL)
                         {
-                            Form_pg_attribute att = TupleDescAttr(tupDesc, i);
-                            const char *attname = NameStr(att->attname);
-                            StringInfoData value;
-                            initStringInfo(&value);
-                            
-                            /* Create the JSON key pattern */
-                            StringInfoData pattern;
-                            initStringInfo(&pattern);
-                            appendStringInfo(&pattern, "\"%s\"", attname);
-                            
-                            /* Find the key in the JSON object */
-                            char *key_pos = strstr(current_object.data, pattern.data);
-                            if (key_pos != NULL)
+                          
+                            char *value_start = strchr(key_pos + pattern.len, ':');
+                            if (value_start)
                             {
-                                /* Move to the value part */
-                                char *value_start = strchr(key_pos + pattern.len, ':');
-                                if (value_start)
+                                value_start++; 
+                                
+                                
+                                while (isspace((unsigned char) *value_start))
+                                    value_start++;
+                                
+                               
+                                bool in_val_string = false;
+                                bool val_escaped = false;
+                                
+                                if (*value_start == '"')
                                 {
-                                    value_start++; /* Skip the colon */
+                                   
+                                    in_val_string = true;
+                                    value_start++; 
                                     
-                                    /* Skip whitespace */
-                                    while (isspace((unsigned char) *value_start))
+                                    while (*value_start)
+                                    {
+                                        if (*value_start == '\\' && !val_escaped)
+                                        {
+                                            val_escaped = true;
+                                        }
+                                        else if (*value_start == '"' && !val_escaped)
+                                        {
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            appendStringInfoChar(&value, *value_start);
+                                            val_escaped = false;
+                                        }
                                         value_start++;
-                                    
-                                    /* Extract the value */
-                                    bool in_val_string = false;
-                                    bool val_escaped = false;
-                                    
-                                    if (*value_start == '"')
-                                    {
-                                        /* String value */
-                                        in_val_string = true;
-                                        value_start++; /* Skip the opening quote */
-                                        
-                                        while (*value_start)
-                                        {
-                                            if (*value_start == '\\' && !val_escaped)
-                                            {
-                                                val_escaped = true;
-                                            }
-                                            else if (*value_start == '"' && !val_escaped)
-                                            {
-                                                break;
-                                            }
-                                            else
-                                            {
-                                                appendStringInfoChar(&value, *value_start);
-                                                val_escaped = false;
-                                            }
-                                            value_start++;
-                                        }
                                     }
-                                    else
-                                    {
-                                        /* Number or other value */
-                                        while (*value_start && *value_start != ',' && *value_start != '}')
-                                        {
-                                            if (!isspace((unsigned char) *value_start))
-                                                appendStringInfoChar(&value, *value_start);
-                                            value_start++;
-                                        }
-                                    }
-                                    
-                                    /* Store the value */
-                                    cstate->raw_fields[i] = pstrdup(value.data);
                                 }
+                                else
+                                {
+                                    
+                                    while (*value_start && *value_start != ',' && *value_start != '}')
+                                    {
+                                        if (!isspace((unsigned char) *value_start))
+                                            appendStringInfoChar(&value, *value_start);
+                                        value_start++;
+                                    }
+                                }
+                                
+                                
+                                cstate->raw_fields[i] = pstrdup(value.data);
                             }
-                            
-                            pfree(pattern.data);
-                            pfree(value.data);
                         }
                         
-                        fieldno++;
-                        in_object = false;
+                        pfree(pattern.data);
+                        pfree(value.data);
                     }
+                    
+                    fieldno++;
+                    in_object = false;
+                    break; 
                 }
-                else if (c == '[') {
-                    bracket_level++;
-                }
-                else if (c == ']') {
-                    bracket_level--;
-                    if (bracket_level == 0) {
-                        done = true;
-                        break;
-                    }
-                }
+            }
+            else if (c == '[') {
+                bracket_level++;
+            }
+            else if (c == ']') {
+                bracket_level--;
+            }
+        }
+        else {
+            if (c == '\\' && !escaped) {
+                escaped = true;
+            }
+            else if (c == '"' && !escaped) {
+                in_string = false;
             }
             else {
-                if (c == '\\' && !escaped) {
-                    escaped = true;
-                }
-                else if (c == '"' && !escaped) {
-                    in_string = false;
-                }
-                else {
-                    escaped = false;
-                }
-            }
-
-            if (in_object) {
-                appendStringInfoChar(&current_object, c);
+                escaped = false;
             }
         }
 
-        if (!done) {
-            done = CopyReadLine(cstate);
+        if (in_object) {
+            appendStringInfoChar(&current_object, c);
         }
+    }
+	
+if (fieldno > 0)
+{
+	for (int i = 0; i < tupDesc->natts; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+		if (cstate->raw_fields[i] == NULL && !att->attnotnull)  
+		{
+			cstate->raw_fields[i] = pstrdup("NULL");
+		}
+		else if (cstate->raw_fields[i] == NULL)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("missing required column \"%s\" in JSON data",
+						NameStr(att->attname))));
+		}
+	}
+	pfree(json_buf.data);
+	pfree(current_object.data);
+	return tupDesc->natts;
+}
 
-    } while (!done);
 
-    /* Clean up */
+   
     pfree(json_buf.data);
     pfree(current_object.data);
 
-    return tupDesc->natts;
+    return 0;
+}
+
+static bool
+CopyReadLineJson(CopyFromState cstate)
+{
+    bool        result;
+
+    resetStringInfo(&cstate->line_buf);
+    cstate->line_buf_valid = false;
+
+   
+    result = CopyReadLineJsonBy(cstate);
+    
+
+    if (result)
+    {
+        /*
+         * Reached EOF. In protocol version 3, we should ignore anything
+         * after \. up to the protocol end of copy data.
+         */
+		
+        if (cstate->copy_src == COPY_FRONTEND)
+        {
+            int         inbytes;
+
+            do
+            {
+                inbytes = CopyGetData(cstate, cstate->input_buf,
+                                    1, INPUT_BUF_SIZE);
+            } while (inbytes > 0);
+            cstate->input_buf_index = 0;
+            cstate->input_buf_len = 0;
+            cstate->raw_buf_index = 0;
+            cstate->raw_buf_len = 0;
+        }
+    }
+    else if (!cstate->opts.json_mode)
+    {
+        /*
+         * If we didn't hit EOF, then we must have transferred the EOL marker
+         * to line_buf along with the data. Get rid of it. (In JSON mode we
+         * don't need this as we handle line endings differently)
+         */
+        switch (cstate->eol_type)
+        {
+            case EOL_NL:
+                Assert(cstate->line_buf.len >= 1);
+                Assert(cstate->line_buf.data[cstate->line_buf.len - 1] == '\n');
+                cstate->line_buf.len--;
+                cstate->line_buf.data[cstate->line_buf.len] = '\0';
+                break;
+            case EOL_CR:
+                Assert(cstate->line_buf.len >= 1);
+                Assert(cstate->line_buf.data[cstate->line_buf.len - 1] == '\r');
+                cstate->line_buf.len--;
+                cstate->line_buf.data[cstate->line_buf.len] = '\0';
+                break;
+            case EOL_CRNL:
+                Assert(cstate->line_buf.len >= 2);
+                Assert(cstate->line_buf.data[cstate->line_buf.len - 2] == '\r');
+                Assert(cstate->line_buf.data[cstate->line_buf.len - 1] == '\n');
+                cstate->line_buf.len -= 2;
+                cstate->line_buf.data[cstate->line_buf.len] = '\0';
+                break;
+            case EOL_UNKNOWN:
+                /* shouldn't get here */
+                Assert(false);
+                break;
+        }
+    }
+
+    /* Now it's safe to use the buffer in error messages */
+	
+    cstate->line_buf_valid = true;
+
+    return result;
+}
+
+static bool
+CopyReadLineJsonBy(CopyFromState cstate)
+{
+    char       *copy_input_buf;
+    int         input_buf_ptr;
+    int         copy_buf_len;
+    bool        need_data = false;
+    bool        hit_eof = false;
+    bool        in_string = false;
+    bool        escaped = false;
+    int         brace_level = 0;
+    bool        found_start = false;
+    bool        in_outer_array = false;
+    StringInfoData temp_buf;
+
+    elog(NOTICE, "Starting to read new JSON object");
+    
+    resetStringInfo(&cstate->line_buf);
+    initStringInfo(&temp_buf);
+
+    copy_input_buf = cstate->input_buf;
+    input_buf_ptr = cstate->input_buf_index;
+    copy_buf_len = cstate->input_buf_len;
+
+    if (input_buf_ptr == 0)
+    {
+        while (input_buf_ptr < copy_buf_len && isspace((unsigned char) copy_input_buf[input_buf_ptr]))
+            input_buf_ptr++;
+            
+        if (input_buf_ptr < copy_buf_len && copy_input_buf[input_buf_ptr] == '[')
+        {
+            elog(NOTICE, "Found outer array start");
+            in_outer_array = true;
+            input_buf_ptr++;
+            cstate->input_buf_index = input_buf_ptr;
+        }
+    }
+
+    while (input_buf_ptr < copy_buf_len && 
+           (isspace((unsigned char) copy_input_buf[input_buf_ptr]) || 
+            copy_input_buf[input_buf_ptr] == ','))
+    {
+        input_buf_ptr++;
+    }
+	if (input_buf_ptr < copy_buf_len && copy_input_buf[input_buf_ptr] == ']')
+    {
+        elog(NOTICE, "Found end of array - stopping");
+        cstate->input_buf_index = input_buf_ptr + 1;
+        pfree(temp_buf.data);
+        resetStringInfo(&cstate->line_buf);  // Clear the line buffer
+        return true;  // Signal end of input
+    }
+    cstate->input_buf_index = input_buf_ptr;
+
+    for (;;)
+    {
+        char c;
+
+        if (input_buf_ptr >= copy_buf_len || need_data)
+        {
+            if (found_start && temp_buf.len > 0)
+            {
+                // Save what we've read so far
+                appendBinaryStringInfo(&cstate->line_buf,
+                                     temp_buf.data,
+                                     temp_buf.len);
+            }
+
+            REFILL_LINEBUF;
+            CopyLoadInputBuf(cstate);
+            hit_eof = cstate->input_reached_eof;
+            input_buf_ptr = cstate->input_buf_index;
+            copy_buf_len = cstate->input_buf_len;
+            copy_input_buf = cstate->input_buf;
+
+            if (INPUT_BUF_BYTES(cstate) <= 0)
+            {
+                pfree(temp_buf.data);
+                return true;
+            }
+            need_data = false;
+        }
+
+        c = copy_input_buf[input_buf_ptr++];
+
+        
+
+        if (!found_start)
+        {
+            if (c == '{')
+            {
+                elog(NOTICE, "Found start of object");
+                found_start = true;
+                brace_level = 1;
+                resetStringInfo(&temp_buf);
+                appendStringInfoChar(&temp_buf, c);
+            }
+            continue;
+        }
+
+        // Add character to temporary buffer
+        appendStringInfoChar(&temp_buf, c);
+
+        // Handle string literals
+        if (in_string)
+        {
+            if (escaped)
+                escaped = false;
+            else if (c == '\\')
+                escaped = true;
+            else if (c == '"')
+                in_string = false;
+        }
+        else
+        {
+            if (c == '"')
+                in_string = true;
+            else if (c == '{')
+                brace_level++;
+            else if (c == '}')
+            {
+                brace_level--;
+                if (brace_level == 0)
+                {
+                    // Complete object found
+                    resetStringInfo(&cstate->line_buf);
+                    appendBinaryStringInfo(&cstate->line_buf,
+                                         temp_buf.data,
+                                         temp_buf.len);
+                    cstate->input_buf_index = input_buf_ptr;
+                    elog(NOTICE, "Completed object: %s", cstate->line_buf.data);
+                    pfree(temp_buf.data);
+                    return false;
+                }
+            }
+        }
+
+        if (input_buf_ptr >= copy_buf_len)
+        {
+            cstate->input_buf_index = input_buf_ptr;
+            need_data = true;
+        }
+
+        if (hit_eof && need_data)
+        {
+            if (in_string || brace_level > 0)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                         errmsg("unexpected EOF in JSON input")));
+            }
+            pfree(temp_buf.data);
+            return true;
+        }
+    }
 }
