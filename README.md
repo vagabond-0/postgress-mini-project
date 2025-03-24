@@ -117,7 +117,7 @@ COPY employees FROM '/path/to/employees.txt' WITH (DELIMITER '|');
 COPY employees TO '/path/to/export_file.csv' WITH (FORMAT 'csv', HEADER);
 ```
 
-## JSON Format Support
+
 
 PostgreSQL now supports exporting table data directly to JSON format using the COPY command.
 
