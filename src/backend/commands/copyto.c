@@ -852,10 +852,7 @@ DoCopyTo(CopyToState cstate)
 		ExecDropSingleTupleTableSlot(slot);
 		table_endscan(scandesc);
 	}
-	else
-	{
-		// ... existing query handling code ...
-	}
+	
 
 	/* Clean up */
 	MemoryContextDelete(cstate->rowcontext);
@@ -1250,7 +1247,6 @@ CreateCopyDestReceiver(void)
 
 	return (DestReceiver *) self;
 }
-/* Function to convert a single tuple to JSON format */
 #include "postgres.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
@@ -1315,7 +1311,6 @@ CopyAttributeOutJSON(CopyToState cstate, const char *string, bool use_quote)
         CopySendChar(cstate, '"');
 }
 
-/* Function to convert a tuple to JSON */
 static void
 CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
 {
@@ -1326,10 +1321,8 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
 
     oldcontext = MemoryContextSwitchTo(cstate->rowcontext);
 
-    /* Opening brace */
     CopySendChar(cstate, '{');
 
-    /* Write each attribute */
     foreach(cur, cstate->attnumlist)
     {
         int         attnum = lfirst_int(cur) - 1;
@@ -1343,12 +1336,10 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
             CopySendString(cstate, ", ");
         need_comma = true;
 
-        /* Write attribute name */
         CopySendChar(cstate, '"');
         CopySendString(cstate, NameStr(attr->attname));
         CopySendString(cstate, "\": ");
 
-        /* Get the attribute value */
         value = slot_getattr(slot, attnum + 1, &isnull);
 
         if (isnull)
@@ -1357,10 +1348,8 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
             continue;
         }
 
-        /* Get output function for the type */
         getTypeOutputInfo(attr->atttypid, &typoutput, &typisvarlena);
 
-        /* Convert the value based on its type */
         switch (attr->atttypid)
         {
             case INT2OID:
@@ -1401,7 +1390,6 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
                 break;
 
             default:
-                /* For other types, convert to string and quote */
                 CopyAttributeOutJSON(cstate,
                                    OidOutputFunctionCall(typoutput, value),
                                    true);
@@ -1409,14 +1397,12 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
         }
     }
 
-    /* Closing brace */
     CopySendChar(cstate, '}');
 
     MemoryContextSwitchTo(oldcontext);
     MemoryContextReset(cstate->rowcontext);
 }
 
-/* Main function to handle COPY TO with JSON format */
 void
 CopyToJSON(CopyToState cstate)
 {
@@ -1424,19 +1410,17 @@ CopyToJSON(CopyToState cstate)
     TableScanDesc scandesc;
     bool        first_row = true;
 
-    /* Write the opening bracket for the JSON array */
     CopySendChar(cstate, '[');
     CopySendEndOfRow(cstate);
 
-    /* Start the table scan */
+   
     scandesc = table_beginscan(cstate->rel, GetActiveSnapshot(), 0, NULL);
 
-    /* Process each tuple */
+   
     while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
     {
         CHECK_FOR_INTERRUPTS();
 
-        /* Add comma between objects except for the first one */
         if (!first_row)
         {
             CopySendChar(cstate, ',');
@@ -1444,14 +1428,12 @@ CopyToJSON(CopyToState cstate)
         }
         first_row = false;
 
-        /* Convert the tuple to JSON */
         CopyOneRowToJSON(cstate, slot);
     }
 
-    /* End the table scan */
+    
     table_endscan(scandesc);
 
-    /* Write the closing bracket for the JSON array */
     CopySendEndOfRow(cstate);
     CopySendChar(cstate, ']');
     CopySendEndOfRow(cstate);
