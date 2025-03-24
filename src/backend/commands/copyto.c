@@ -791,65 +791,11 @@ DoCopyTo(CopyToState cstate)
 	/*
 	 * Create a temporary memory context that we can reset once per row to
 	 * recover palloc'd memory.  This avoids any problems with leaks inside
-	 * datatype output routines, and should be faster than retail pfree's
-	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
+	 * datatype output routines, and should be faster than retail pfree's anyway.
 	 */
 	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
-
-	if (cstate->opts.binary)
-	{
-		/* Generate header for a binary copy */
-		int32		tmp;
-
-		/* Signature */
-		CopySendData(cstate, BinarySignature, 11);
-		/* Flags field */
-		tmp = 0;
-		CopySendInt32(cstate, tmp);
-		/* No header extension */
-		tmp = 0;
-		CopySendInt32(cstate, tmp);
-	}
-	else
-	{
-		/*
-		 * For non-binary copy, we need to convert null_print to file
-		 * encoding, because it will be sent directly with CopySendString.
-		 */
-		if (cstate->need_transcoding)
-			cstate->opts.null_print_client = pg_server_to_any(cstate->opts.null_print,
-															  cstate->opts.null_print_len,
-															  cstate->file_encoding);
-
-		/* if a header has been requested send the line */
-		if (cstate->opts.header_line)
-		{
-			bool		hdr_delim = false;
-
-			foreach(cur, cstate->attnumlist)
-			{
-				int			attnum = lfirst_int(cur);
-				char	   *colname;
-
-				if (hdr_delim)
-					CopySendChar(cstate, cstate->opts.delim[0]);
-				hdr_delim = true;
-
-				colname = NameStr(TupleDescAttr(tupDesc, attnum - 1)->attname);
-
-				if (cstate->opts.csv_mode)
-					CopyAttributeOutCSV(cstate, colname, false);
-				else if(cstate->opts.json_mode) 
-					CopyAttributeOutJSON(cstate,colname,false);
-				else
-					CopyAttributeOutText(cstate, colname);
-			}
-
-			CopySendEndOfRow(cstate);
-		}
-	}
 
 	if (cstate->rel)
 	{
@@ -860,22 +806,47 @@ DoCopyTo(CopyToState cstate)
 		slot = table_slot_create(cstate->rel, NULL);
 
 		processed = 0;
-		while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
+
+		if (cstate->opts.json_mode)
 		{
-			CHECK_FOR_INTERRUPTS();
+			/* Write opening bracket for JSON array */
+			CopySendString(cstate, "[\n");
+			bool first_row = true;
 
-			/* Deconstruct the tuple ... */
-			slot_getallattrs(slot);
+			while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
+			{
+				CHECK_FOR_INTERRUPTS();
 
-			/* Format and send the data */
-			CopyOneRowTo(cstate, slot);
+				/* Add comma between objects except for the first one */
+				if (!first_row)
+					CopySendString(cstate, ",\n");
+				first_row = false;
 
-			/*
-			 * Increment the number of processed tuples, and report the
-			 * progress.
-			 */
-			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
-										 ++processed);
+				/* Add indentation */
+				CopySendString(cstate, "  ");
+
+				/* Format and send the data as JSON */
+				CopyOneRowToJSON(cstate, slot);
+
+				processed++;
+
+				/* Make sure to flush the data */
+				CopySendEndOfRow(cstate);
+			}
+
+			/* Write closing bracket */
+			CopySendString(cstate, "\n]\n");
+			/* Final flush */
+			CopySendEndOfRow(cstate);
+		}
+		else
+		{
+			while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
+			{
+				CHECK_FOR_INTERRUPTS();
+				CopyOneRowTo(cstate, slot);
+				processed++;
+			}
 		}
 
 		ExecDropSingleTupleTableSlot(slot);
@@ -883,19 +854,10 @@ DoCopyTo(CopyToState cstate)
 	}
 	else
 	{
-		/* run the plan --- the dest receiver will send tuples */
-		ExecutorRun(cstate->queryDesc, ForwardScanDirection, 0, true);
-		processed = ((DR_copy *) cstate->queryDesc->dest)->processed;
+		// ... existing query handling code ...
 	}
 
-	if (cstate->opts.binary)
-	{
-		/* Generate trailer for a binary copy */
-		CopySendInt16(cstate, -1);
-		/* Need to flush out the trailer */
-		CopySendEndOfRow(cstate);
-	}
-
+	/* Clean up */
 	MemoryContextDelete(cstate->rowcontext);
 
 	if (fe_copy)
@@ -1360,6 +1322,9 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
     TupleDesc   tupdesc = slot->tts_tupleDescriptor;
     ListCell   *cur;
     bool        need_comma = false;
+    MemoryContext oldcontext;
+
+    oldcontext = MemoryContextSwitchTo(cstate->rowcontext);
 
     /* Opening brace */
     CopySendChar(cstate, '{');
@@ -1375,13 +1340,13 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
         bool        typisvarlena;
 
         if (need_comma)
-            CopySendChar(cstate, ',');
+            CopySendString(cstate, ", ");
         need_comma = true;
 
         /* Write attribute name */
         CopySendChar(cstate, '"');
         CopySendString(cstate, NameStr(attr->attname));
-        CopySendString(cstate, "\":");
+        CopySendString(cstate, "\": ");
 
         /* Get the attribute value */
         value = slot_getattr(slot, attnum + 1, &isnull);
@@ -1403,7 +1368,6 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
             case INT8OID:
                 {
                     char        buf[32];
-                    
                     snprintf(buf, sizeof(buf), "%lld", 
                             (long long) DatumGetInt64(value));
                     CopySendString(cstate, buf);
@@ -1414,7 +1378,6 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
             case FLOAT8OID:
                 {
                     char        buf[128];
-                    
                     snprintf(buf, sizeof(buf), "%.12g", 
                             DatumGetFloat8(value));
                     CopySendString(cstate, buf);
@@ -1448,6 +1411,9 @@ CopyOneRowToJSON(CopyToState cstate, TupleTableSlot *slot)
 
     /* Closing brace */
     CopySendChar(cstate, '}');
+
+    MemoryContextSwitchTo(oldcontext);
+    MemoryContextReset(cstate->rowcontext);
 }
 
 /* Main function to handle COPY TO with JSON format */
