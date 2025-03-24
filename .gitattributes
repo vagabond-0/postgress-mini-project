@@ -30,3 +30,6 @@ src/timezone/data/*			-whitespace
 src/tools/pg_bsd_indent/*		-whitespace
 src/tools/pg_bsd_indent/tests/*		-whitespace
 *.log filter=lfs diff=lfs merge=lfs -text
+*.jar filter=lfs diff=lfs merge=lfs -text
+logfile filter=lfs diff=lfs merge=lfs -text
+data/base/16388/16390 filter=lfs diff=lfs merge=lfs -text
