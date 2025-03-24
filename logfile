@@ -2031,3 +2031,5 @@ postgres: amalendu new_db [local] COPY(_start+0x25) [0x6058ca80e905]
 2025-03-24 18:14:14.740 IST [57493] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
 2025-03-24 18:14:14.743 IST [57496] LOG:  database system was shut down at 2025-03-24 18:14:14 IST
 2025-03-24 18:14:14.746 IST [57493] LOG:  database system is ready to accept connections
+2025-03-24 18:19:14.841 IST [57494] LOG:  checkpoint starting: time
+2025-03-24 18:19:14.855 IST [57494] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194E470, redo lsn=0/194E418
