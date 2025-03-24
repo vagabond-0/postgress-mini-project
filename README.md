@@ -119,6 +119,66 @@ COPY employees FROM '/path/to/employees.txt' WITH (DELIMITER '|');
 COPY employees TO '/path/to/export_file.csv' WITH (FORMAT 'csv', HEADER);
 ```
 
+
+
+PostgreSQL now supports exporting table data directly to JSON format using the COPY command.
+
+### Exporting to JSON
+
+To export a table or query results to JSON format:
+
+```sql
+-- Export entire table to JSON
+COPY table_name TO '/path/to/output.json' WITH (FORMAT 'json');
+
+-- Export query results to JSON
+COPY (SELECT * FROM table_name WHERE condition) TO '/path/to/output.json' WITH (FORMAT 'json');
+```
+
+The output will be a JSON array containing objects for each row:
+```json
+[
+  {"id": 1, "name": "John Smith", "age": 30, "department": "Engineering"},
+  {"id": 2, "name": "Jane Doe", "age": 28, "department": "Marketing"},
+  {"id": 3, "name": "Bob Wilson", "age": 35, "department": "Finance"}
+]
+```
+
+### Data Type Handling
+
+The JSON export handles PostgreSQL data types as follows:
+- Numeric types (INT, FLOAT) -> JSON numbers
+- Text types (TEXT, VARCHAR) -> JSON strings
+- Boolean -> JSON boolean
+- NULL values -> JSON null
+- Arrays -> JSON arrays
+- JSON/JSONB -> Nested JSON structures
+- Other types -> Converted to strings
+
+### Example Usage
+
+```sql
+-- Create a sample table
+CREATE TABLE employees (
+    id INT,
+    name TEXT,
+    age INT,
+    department TEXT,
+    salary NUMERIC
+);
+
+-- Insert some data
+INSERT INTO employees VALUES
+    (1, 'John Smith', 30, 'Engineering', 85000),
+    (2, 'Jane Doe', 28, 'Marketing', 72000);
+
+-- Export to JSON
+COPY employees TO '/tmp/employees.json' WITH (FORMAT 'json');
+
+-- Export specific columns
+COPY (SELECT name, department FROM employees) TO '/tmp/emp_names.json' WITH (FORMAT 'json');
+```
+
 ## Running PostgreSQL
 
 ### Starting the Server
