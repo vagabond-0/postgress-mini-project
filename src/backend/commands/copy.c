@@ -500,6 +500,10 @@ ProcessCopyOptions(ParseState *pstate,
 				elog(NOTICE, "JSON mode detected in COPY command");
 				opts_out->json_mode = true;	
 			}
+			else if(strcmp(fmt,"avro") == 0){
+				elog(NOTICE, "avro mode detected in COPY command");
+				opts_out->avro_mode = true;	
+			}
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
