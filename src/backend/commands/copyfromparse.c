@@ -75,6 +75,11 @@
 #include "port/pg_bswap.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#include <avro.h>
+#include "utils/fmgroids.h"
+#include "utils/builtins.h"
+#include "utils/syscache.h"
+#include "utils/typcache.h"
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -144,6 +149,17 @@ if (1) \
 	goto not_end_of_copy; \
 } else ((void) 0)
 
+//declaration for avro from
+// typedef struct AvroReaderState
+// {
+//     avro_file_reader_t reader;
+//     avro_schema_t schema;
+//     avro_value_t value;
+//     int num_columns;
+//     Oid *column_types;
+//     char **column_names;
+// } AvroReaderState;
+
 /* NOTE: there's a copy of this in copyto.c */
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
@@ -170,6 +186,12 @@ static int	CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes);
 /* Function for handling Json*/
 static bool CopyReadLineJson(CopyFromState cstate);
 static bool CopyReadLineJsonBy(CopyFromState cstate);
+
+//function to handle the avro 
+static void FinalizeAvroReader(CopyFromState cstate);
+static bool ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls);
+static void InitAvroReader(CopyFromState cstate);
+
 
 void
 ReceiveCopyBegin(CopyFromState cstate)
@@ -851,6 +873,50 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
 			return false;
 		elog(NOTICE,"The function is called");
 		fldct = CopyReadAttributesJsonArray(cstate);
+	}else if(cstate->opts.avro_mode){
+		TupleDesc tupDesc = RelationGetDescr(cstate->rel);
+        Datum *values;
+        bool *nulls;
+        
+        // Initialize arrays for the first time
+        if (!cstate->format_state.avro.avro_state) {
+            values = (Datum *) palloc(tupDesc->natts * sizeof(Datum));
+            nulls = (bool *) palloc(tupDesc->natts * sizeof(bool));
+            InitAvroReader(cstate);
+        }
+        
+        // Read one row from Avro file
+        if (!ReadRowFromAvro(cstate, values, nulls)) {
+            FinalizeAvroReader(cstate);
+            return false;
+        }
+        
+        // Convert Datums to strings for raw_fields
+        if (cstate->max_fields < tupDesc->natts) {
+            cstate->max_fields = tupDesc->natts;
+            cstate->raw_fields = repalloc(cstate->raw_fields, 
+                                        cstate->max_fields * sizeof(char *));
+        }
+        
+        for (int i = 0; i < tupDesc->natts; i++) {
+            if (nulls[i]) {
+                cstate->raw_fields[i] = NULL;
+            } else {
+                Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+                Oid typoutput;
+                bool typisvarlena;
+                
+                // getTypeBinaryOutputInfo(att->atttypid, &typoutput, &typisvarlena);
+                cstate->raw_fields[i] = OidOutputFunctionCall(typoutput, values[i]);
+            }
+        }
+        
+        *fields = cstate->raw_fields;
+        *nfields = tupDesc->natts;
+		pfree(values);
+        pfree(nulls);
+        
+        return true;
 	}
 	else{
 		/* Actually read the line into memory here */
@@ -2500,5 +2566,196 @@ CopyReadLineJsonBy(CopyFromState cstate)
             pfree(temp_buf.data);
             return true;
         }
+    }
+}
+static void
+InitAvroReader(CopyFromState cstate)
+{
+	elog(NOTICE, "Initializing Avro reader for file: %s", cstate->filename);
+    AvroReaderState *state;
+    TupleDesc tupdesc;
+    int i;
+    const char *error_msg;
+    
+    /* Allocate state */
+    state = (AvroReaderState *) palloc0(sizeof(AvroReaderState));
+    cstate->format_state.avro.avro_state = state;
+
+    /* Get tuple descriptor */
+    tupdesc = RelationGetDescr(cstate->rel);
+    state->num_columns = tupdesc->natts;
+    
+    /* Store column information */
+    state->column_types = (Oid *) palloc(state->num_columns * sizeof(Oid));
+    state->column_names = (char **) palloc(state->num_columns * sizeof(char *));
+
+    for (i = 0; i < state->num_columns; i++) {
+        Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+        state->column_types[i] = att->atttypid;
+        state->column_names[i] = pstrdup(NameStr(att->attname));
+    }
+
+    /* Open Avro file reader */
+    if (avro_file_reader(cstate->filename, &state->reader)) {
+        error_msg = avro_strerror();
+        ereport(ERROR,
+                (errcode(ERRCODE_IO_ERROR),
+                 errmsg("could not open Avro file %s: %s", 
+                       cstate->filename, error_msg)));
+    }
+
+    /* Get and validate schema */
+    state->schema = avro_file_reader_get_writer_schema(state->reader);
+    if (!state->schema) {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("could not get Avro schema from file")));
+    }
+
+    /* Check schema matches table structure */
+    if (avro_schema_record_size(state->schema) != state->num_columns) {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("Avro schema has %d fields but table has %d columns",
+					avro_schema_record_size(state->schema),
+                       state->num_columns)));
+    }
+
+    /* Create Avro value for reading */
+    avro_value_iface_t *iface = avro_generic_class_from_schema(state->schema);
+    avro_generic_value_new(iface, &state->value);
+}
+
+static bool
+ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
+{
+	elog(NOTICE, "Reading Avro row");
+    AvroReaderState *state = cstate->format_state.avro.avro_state;
+    int i;
+    int ret;
+    
+    /* Read next record */
+    ret = avro_file_reader_read_value(state->reader, &state->value);
+    if (ret != 0) {
+        if (ret == EOF) {
+            return false;  // Normal end of file
+        }
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("error reading Avro record: %s", avro_strerror())));
+    }
+
+    /* Process each field */
+    for (i = 0; i < state->num_columns; i++) {
+        avro_value_t field_value;
+        const char *field_name = state->column_names[i];
+        Oid pg_type = state->column_types[i];
+        
+        /* Get field by name */
+        if (avro_value_get_by_name(&state->value, field_name, &field_value, NULL) != 0) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("Avro record missing field \"%s\"", field_name)));
+        }
+
+        /* Handle NULL values */
+        if (avro_value_get_null(&field_value)) {
+            nulls[i] = true;
+            values[i] = (Datum) 0;
+            continue;
+        }
+        
+        nulls[i] = false;
+        
+        /* Convert based on PostgreSQL type */
+        switch (pg_type) {
+            case INT4OID: {
+                int32_t val;
+                if (avro_value_get_int(&field_value, &val) == 0)
+                    values[i] = Int32GetDatum(val);
+                break;
+            }
+            case INT8OID: {
+                int64_t val;
+                if (avro_value_get_long(&field_value, &val) == 0)
+                    values[i] = Int64GetDatum(val);
+                break;
+            }
+            case FLOAT4OID: {
+                float val;
+                if (avro_value_get_float(&field_value, &val) == 0)
+                    values[i] = Float4GetDatum(val);
+                break;
+            }
+            case FLOAT8OID: {
+                double val;
+                if (avro_value_get_double(&field_value, &val) == 0)
+                    values[i] = Float8GetDatum(val);
+                break;
+            }
+            case BOOLOID: {
+                int val;
+                if (avro_value_get_boolean(&field_value, &val) == 0)
+                    values[i] = BoolGetDatum(val);
+                break;
+            }
+            case TEXTOID:
+            case VARCHAROID: {
+                const char *str;
+                size_t size;
+                if (avro_value_get_string(&field_value, &str, &size) == 0)
+                    values[i] = CStringGetTextDatum(str);
+                break;
+            }
+            case BYTEAOID: {
+                const void *bytes;
+                size_t size;
+                if (avro_value_get_bytes(&field_value, &bytes, &size) == 0) {
+                    bytea *result = (bytea *) palloc(size + VARHDRSZ);
+                    SET_VARSIZE(result, size + VARHDRSZ);
+                    memcpy(VARDATA(result), bytes, size);
+                    values[i] = PointerGetDatum(result);
+                }
+                break;
+            }
+            default: {
+                /* For unsupported types, try to convert to text */
+                char *str;
+                if (avro_value_to_json(&field_value, 0, &str) == 0) {
+                    values[i] = CStringGetTextDatum(str);
+                    free(str);
+                } else {
+                    ereport(ERROR,
+                            (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                             errmsg("could not convert Avro field \"%s\" to PostgreSQL type %u",
+                                   field_name, pg_type)));
+                }
+                break;
+            }
+        }
+    }
+    
+    return true;
+}
+
+
+static void
+FinalizeAvroReader(CopyFromState cstate)
+{
+    if (cstate->format_state.avro.avro_state) {
+        AvroReaderState *state = cstate->format_state.avro.avro_state;
+        
+        avro_value_decref(&state->value);
+        avro_file_reader_close(state->reader);
+        avro_schema_decref(state->schema);
+        
+        for (int i = 0; i < state->num_columns; i++)
+            pfree(state->column_names[i]);
+        
+        pfree(state->column_names);
+        pfree(state->column_types);
+        pfree(state);
+        
+        cstate->format_state.avro.avro_state = NULL;
     }
 }

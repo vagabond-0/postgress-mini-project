@@ -17,6 +17,8 @@
 #include "commands/copy.h"
 #include "commands/trigger.h"
 #include "nodes/miscnodes.h"
+#include <avro.h>
+
 
 /*
  * Represents the different source cases we need to worry about at
@@ -52,10 +54,26 @@ typedef enum CopyInsertMethod
 								 * ExecForeignBatchInsert only if valid */
 } CopyInsertMethod;
 
+typedef struct AvroReaderState
+{
+	avro_file_reader_t reader;
+	avro_schema_t schema;
+	avro_value_t value;
+	int num_columns;
+	Oid *column_types;
+	char **column_names;
+} AvroReaderState;
+
 /*
  * This struct contains all the state variables used throughout a COPY FROM
  * operation.
  */
+ typedef union
+{
+    struct {
+        AvroReaderState *avro_state;
+    } avro;
+} CopyFromFormatState;
 typedef struct CopyFromStateData
 {
 	/* low-level state data */
@@ -124,7 +142,7 @@ typedef struct CopyFromStateData
 	 * current field, but the usage is otherwise similar.
 	 */
 	StringInfoData attribute_buf;
-
+	CopyFromFormatState format_state;
 	/* field raw data pointers found by COPY FROM */
 
 	int			max_fields;
