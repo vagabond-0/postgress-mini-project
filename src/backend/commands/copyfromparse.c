@@ -79,7 +79,8 @@
 #include "utils/fmgroids.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"
+#include "utils/typcache.h"  // For getTypeOutputInfo
+#include "utils/lsyscache.h" // For getTypeInputInfo
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -906,7 +907,7 @@ NextCopyFromRawFields(CopyFromState cstate, char ***fields, int *nfields)
                 Oid typoutput;
                 bool typisvarlena;
                 
-                // getTypeBinaryOutputInfo(att->atttypid, &typoutput, &typisvarlena);
+                getTypeBinaryOutputInfo(att->atttypid, &typoutput, &typisvarlena);
                 cstate->raw_fields[i] = OidOutputFunctionCall(typoutput, values[i]);
             }
         }
@@ -2629,7 +2630,6 @@ InitAvroReader(CopyFromState cstate)
 static bool
 ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
 {
-	elog(NOTICE, "Reading Avro row");
     AvroReaderState *state = cstate->format_state.avro.avro_state;
     int i;
     int ret;
@@ -2652,10 +2652,12 @@ ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
         Oid pg_type = state->column_types[i];
         
         /* Get field by name */
-        if (avro_value_get_by_name(&state->value, field_name, &field_value, NULL) != 0) {
+        ret = avro_value_get_by_name(&state->value, field_name, &field_value, NULL);
+        if (ret != 0) {
             ereport(ERROR,
                     (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-                     errmsg("Avro record missing field \"%s\"", field_name)));
+                     errmsg("Avro record missing field \"%s\": %s", 
+                            field_name, avro_strerror())));
         }
 
         /* Handle NULL values */
@@ -2671,8 +2673,9 @@ ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
         switch (pg_type) {
             case INT4OID: {
                 int32_t val;
-                if (avro_value_get_int(&field_value, &val) == 0)
-                    values[i] = Int32GetDatum(val);
+                if (avro_value_get_int(&field_value, &val) != 0)
+                    goto conversion_error;
+                values[i] = Int32GetDatum(val);
                 break;
             }
             case INT8OID: {
@@ -2719,20 +2722,23 @@ ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
                 break;
             }
             default: {
-                /* For unsupported types, try to convert to text */
                 char *str;
                 if (avro_value_to_json(&field_value, 0, &str) == 0) {
                     values[i] = CStringGetTextDatum(str);
                     free(str);
                 } else {
-                    ereport(ERROR,
-                            (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-                             errmsg("could not convert Avro field \"%s\" to PostgreSQL type %u",
-                                   field_name, pg_type)));
+                    goto conversion_error;
                 }
                 break;
             }
         }
+        continue;
+
+conversion_error:
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("could not convert Avro field \"%s\" to PostgreSQL type %u: %s",
+                        field_name, pg_type, avro_strerror())));
     }
     
     return true;

@@ -2199,3 +2199,64 @@ postgres: amalendu new_db [local] COPY(_start+0x25) [0x6058ca80e905]
 2025-03-25 15:32:46.047 IST [416797] LOG:  checkpoint starting: end-of-recovery immediate wait
 2025-03-25 15:32:46.055 IST [416797] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.009 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194ECD8, redo lsn=0/194ECD8
 2025-03-25 15:32:46.057 IST [416673] LOG:  database system is ready to accept connections
+2025-03-25 15:39:17.850 IST [6678] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-25 15:39:17.851 IST [6678] LOG:  could not bind IPv6 address "::1": Address already in use
+2025-03-25 15:39:17.851 IST [6678] HINT:  Is another postmaster already running on port 5432? If not, wait a few seconds and retry.
+2025-03-25 15:39:17.851 IST [6678] LOG:  could not bind IPv4 address "127.0.0.1": Address already in use
+2025-03-25 15:39:17.851 IST [6678] HINT:  Is another postmaster already running on port 5432? If not, wait a few seconds and retry.
+2025-03-25 15:39:17.851 IST [6678] WARNING:  could not create listen socket for "localhost"
+2025-03-25 15:39:17.851 IST [6678] FATAL:  could not create any TCP/IP sockets
+2025-03-25 15:39:17.852 IST [6678] LOG:  database system is shut down
+2025-03-25 15:40:13.057 IST [7544] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-25 15:40:13.057 IST [7544] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-25 15:40:13.057 IST [7544] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-25 15:40:13.058 IST [7544] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-25 15:40:13.061 IST [7547] LOG:  database system was interrupted; last known up at 2025-03-25 15:32:46 IST
+2025-03-25 15:40:13.123 IST [7547] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-25 15:40:13.125 IST [7547] LOG:  redo starts at 0/194ED50
+2025-03-25 15:40:13.125 IST [7547] LOG:  invalid record length at 0/194ED88: expected at least 24, got 0
+2025-03-25 15:40:13.125 IST [7547] LOG:  redo done at 0/194ED50 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2025-03-25 15:40:13.128 IST [7545] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-25 15:40:13.137 IST [7545] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.010 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194ED88, redo lsn=0/194ED88
+2025-03-25 15:40:13.138 IST [7544] LOG:  database system is ready to accept connections
+2025-03-25 15:40:16.564 IST [7544] LOG:  server process (PID 7589) was terminated by signal 11: Segmentation fault
+2025-03-25 15:40:16.564 IST [7544] DETAIL:  Failed process was running: COPY employees
+	FROM '/home/amalendu/college/output.avro'
+	WITH (FORMAT 'avro');
+2025-03-25 15:40:16.564 IST [7544] LOG:  terminating any other active server processes
+2025-03-25 15:40:16.564 IST [7605] FATAL:  the database system is in recovery mode
+2025-03-25 15:40:16.565 IST [7544] LOG:  all server processes terminated; reinitializing
+2025-03-25 15:40:16.583 IST [7606] LOG:  database system was interrupted; last known up at 2025-03-25 15:40:13 IST
+2025-03-25 15:40:16.645 IST [7606] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-25 15:40:16.647 IST [7606] LOG:  invalid record length at 0/194EE00: expected at least 24, got 0
+2025-03-25 15:40:16.647 IST [7606] LOG:  redo is not required
+2025-03-25 15:40:16.650 IST [7607] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-25 15:40:16.658 IST [7607] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.010 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194EE00, redo lsn=0/194EE00
+2025-03-25 15:40:16.659 IST [7544] LOG:  database system is ready to accept connections
+2025-03-25 15:48:45.495 IST [7544] LOG:  received fast shutdown request
+2025-03-25 15:48:45.499 IST [7544] LOG:  aborting any active transactions
+2025-03-25 15:48:45.500 IST [7544] LOG:  background worker "logical replication launcher" (PID 7611) exited with exit code 1
+2025-03-25 15:48:45.500 IST [7607] LOG:  shutting down
+2025-03-25 15:48:45.503 IST [7607] LOG:  checkpoint starting: shutdown immediate
+2025-03-25 15:48:45.510 IST [7607] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.011 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/194EEB0, redo lsn=0/194EEB0
+2025-03-25 15:48:45.512 IST [7544] LOG:  database system is shut down
+2025-03-25 15:48:45.609 IST [10649] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-25 15:48:45.610 IST [10649] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-25 15:48:45.610 IST [10649] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-25 15:48:45.611 IST [10649] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-25 15:48:45.615 IST [10652] LOG:  database system was shut down at 2025-03-25 15:48:45 IST
+2025-03-25 15:48:45.619 IST [10649] LOG:  database system is ready to accept connections
+2025-03-25 15:48:50.271 IST [10649] LOG:  server process (PID 10693) was terminated by signal 11: Segmentation fault
+2025-03-25 15:48:50.271 IST [10649] DETAIL:  Failed process was running: COPY employees
+	FROM '/home/amalendu/college/output.avro'
+	WITH (FORMAT 'avro');
+2025-03-25 15:48:50.271 IST [10649] LOG:  terminating any other active server processes
+2025-03-25 15:48:50.271 IST [10706] FATAL:  the database system is in recovery mode
+2025-03-25 15:48:50.271 IST [10649] LOG:  all server processes terminated; reinitializing
+2025-03-25 15:48:50.285 IST [10707] LOG:  database system was interrupted; last known up at 2025-03-25 15:48:45 IST
+2025-03-25 15:48:50.351 IST [10707] LOG:  database system was not properly shut down; automatic recovery in progress
+2025-03-25 15:48:50.353 IST [10707] LOG:  invalid record length at 0/194EF28: expected at least 24, got 0
+2025-03-25 15:48:50.353 IST [10707] LOG:  redo is not required
+2025-03-25 15:48:50.357 IST [10708] LOG:  checkpoint starting: end-of-recovery immediate wait
+2025-03-25 15:48:50.369 IST [10708] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194EF28, redo lsn=0/194EF28
+2025-03-25 15:48:50.371 IST [10649] LOG:  database system is ready to accept connections
