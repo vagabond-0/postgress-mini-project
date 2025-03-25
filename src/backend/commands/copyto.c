@@ -35,7 +35,13 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-
+#include "postgres.h"
+#include "fmgr.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "catalog/pg_type.h"
+#include "access/tupdesc.h"
+#include <avro.h>
 /*
  * Represents the different dest cases we need to worry about at
  * the bottom level
@@ -46,6 +52,8 @@ typedef enum CopyDest
 	COPY_FRONTEND,				/* to frontend */
 	COPY_CALLBACK,				/* to callback function */
 } CopyDest;
+
+
 
 /*
  * This struct contains all the state variables used throughout a COPY TO
@@ -92,6 +100,9 @@ typedef struct CopyToStateData
 	FmgrInfo   *out_functions;	/* lookup info for output functions */
 	MemoryContext rowcontext;	/* per-row evaluation context */
 	uint64		bytes_processed;	/* number of bytes processed so far */
+	union {
+        void *avro_state;  /* Will point to AvroWriterState */
+    } format_state;
 } CopyToStateData;
 
 /* DestReceiver for COPY (query) TO */
@@ -102,6 +113,16 @@ typedef struct
 	uint64		processed;		/* # of tuples processed */
 } DR_copy;
 
+
+typedef struct AvroWriterState
+{
+    avro_file_writer_t writer;
+    avro_schema_t schema;
+    avro_value_t value;
+    int num_columns;
+    Oid *column_types;
+    char **column_names;
+} AvroWriterState;
 /* NOTE: there's a copy of this in copyfromparse.c */
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
@@ -125,8 +146,9 @@ static void CopySendChar(CopyToState cstate, char c);
 static void CopySendEndOfRow(CopyToState cstate);
 static void CopySendInt32(CopyToState cstate, int32 val);
 static void CopySendInt16(CopyToState cstate, int16 val);
-
-
+static void InitAvroWriter(CopyToState cstate);
+static void WriteRowToAvro(CopyToState cstate, TupleTableSlot *slot);
+static void FinalizeAvroWriter(CopyToState cstate);
 /*
  * Send copy start/stop messages for frontend copies.  These have changed
  * in past protocol redesigns.
@@ -838,6 +860,17 @@ DoCopyTo(CopyToState cstate)
 			CopySendString(cstate, "\n]\n");
 			/* Final flush */
 			CopySendEndOfRow(cstate);
+		}else if (cstate->opts.avro_mode){
+			InitAvroWriter(cstate);
+            
+            while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
+            {
+                CHECK_FOR_INTERRUPTS();
+                WriteRowToAvro(cstate, slot);
+                processed++;
+            }
+            
+            FinalizeAvroWriter(cstate);
 		}
 		else
 		{
@@ -1439,4 +1472,227 @@ CopyToJSON(CopyToState cstate)
     CopySendEndOfRow(cstate);
 
     ExecDropSingleTupleTableSlot(slot);
+}
+
+/* Initialize Avro writer */
+static void
+InitAvroWriter(CopyToState cstate)
+{
+    AvroWriterState *state;
+    TupleDesc tupdesc;
+    avro_schema_t record_schema;
+    avro_value_iface_t *iface;
+    int i;
+    const char *error_msg;
+
+    /* Allocate state */
+    state = (AvroWriterState *) palloc0(sizeof(AvroWriterState));
+    cstate->format_state.avro_state = state;
+
+    /* Get tuple descriptor */
+    tupdesc = cstate->rel ? RelationGetDescr(cstate->rel) : 
+                           cstate->queryDesc->tupDesc;
+
+    /* Store column information */
+    state->num_columns = tupdesc->natts;
+    state->column_types = (Oid *) palloc(state->num_columns * sizeof(Oid));
+    state->column_names = (char **) palloc(state->num_columns * sizeof(char *));
+
+    /* Create Avro record schema */
+    record_schema = avro_schema_record("PostgreSQLRecord", NULL);
+
+    for (i = 0; i < state->num_columns; i++)
+    {
+        Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
+        avro_schema_t field_schema;
+
+        state->column_types[i] = attr->atttypid;
+        state->column_names[i] = pstrdup(NameStr(attr->attname));
+
+        /* Map PostgreSQL types to Avro types */
+        switch (attr->atttypid)
+        {
+            case INT2OID:
+            case INT4OID:
+                field_schema = avro_schema_int();
+                break;
+            case INT8OID:
+                field_schema = avro_schema_long();
+                break;
+            case FLOAT4OID:
+            case FLOAT8OID:
+                field_schema = avro_schema_double();
+                break;
+            case BOOLOID:
+                field_schema = avro_schema_boolean();
+                break;
+            case NUMERICOID:
+            case DATEOID:
+            case TIMESTAMPOID:
+            case TIMESTAMPTZOID:
+            case TEXTOID:
+            case VARCHAROID:
+            case BPCHAROID:
+            case NAMEOID:
+                field_schema = avro_schema_string();
+                break;
+            default:
+                // For any other type, store as string
+                field_schema = avro_schema_string();
+                break;
+        }
+
+        avro_schema_record_field_append(record_schema, 
+                                      state->column_names[i], 
+                                      field_schema);
+    }
+
+    /* Create Avro file writer */
+    if (avro_file_writer_create(cstate->filename, 
+                               record_schema, 
+                               &state->writer) != 0)
+    {
+        error_msg = avro_strerror();
+        ereport(ERROR,
+                (errcode(ERRCODE_IO_ERROR),
+                 errmsg("could not create Avro file: %s", error_msg)));
+    }
+
+    state->schema = record_schema;
+    iface = avro_generic_class_from_schema(record_schema);
+    avro_generic_value_new(iface, &state->value);
+}
+
+/* Write a row to Avro file */
+static void
+WriteRowToAvro(CopyToState cstate, TupleTableSlot *slot)
+{
+    AvroWriterState *state = cstate->format_state.avro_state;
+    int i;
+    const char *error_msg;
+
+    for (i = 0; i < state->num_columns; i++)
+    {
+        Datum value;
+        bool isnull;
+        avro_value_t field_value;
+        Oid type = state->column_types[i];
+
+        value = slot_getattr(slot, i + 1, &isnull);
+        avro_value_get_by_index(&state->value, i, &field_value, NULL);
+
+        if (isnull)
+        {
+            avro_value_set_null(&field_value);
+            continue;
+        }
+
+        switch (type)
+        {
+            case INT2OID:
+                avro_value_set_int(&field_value, DatumGetInt16(value));
+                break;
+            case INT4OID:
+                avro_value_set_int(&field_value, DatumGetInt32(value));
+                break;
+            case INT8OID:
+                avro_value_set_long(&field_value, DatumGetInt64(value));
+                break;
+            case FLOAT4OID:
+                avro_value_set_double(&field_value, DatumGetFloat4(value));
+                break;
+            case FLOAT8OID:
+                avro_value_set_double(&field_value, DatumGetFloat8(value));
+                break;
+            case BOOLOID:
+                avro_value_set_boolean(&field_value, DatumGetBool(value));
+                break;
+            case NUMERICOID:  // Add support for numeric/decimal
+                {
+                    char *str = DatumGetCString(DirectFunctionCall1(numeric_out, value));
+                    avro_value_set_string(&field_value, str);
+                    pfree(str);
+                }
+                break;
+            case DATEOID:  // Add support for date
+                {
+                    char *str = DatumGetCString(DirectFunctionCall1(date_out, value));
+                    avro_value_set_string(&field_value, str);
+                    pfree(str);
+                }
+                break;
+            case TIMESTAMPOID:  // Add support for timestamp
+            case TIMESTAMPTZOID:  // Add support for timestamp with time zone
+                {
+                    char *str = DatumGetCString(DirectFunctionCall1(timestamp_out, value));
+                    avro_value_set_string(&field_value, str);
+                    pfree(str);
+                }
+                break;
+            case TEXTOID:
+            case VARCHAROID:
+            case BPCHAROID:
+            case NAMEOID:
+                {
+                    char *str = TextDatumGetCString(value);
+                    avro_value_set_string(&field_value, str);
+                    pfree(str);
+                }
+                break;
+            default:
+                {
+                    // For any other type, convert to string representation
+                    Oid typoutput;
+                    bool typisvarlena;
+                    char *str;
+
+                    getTypeOutputInfo(type, &typoutput, &typisvarlena);
+                    str = OidOutputFunctionCall(typoutput, value);
+                    avro_value_set_string(&field_value, str);
+                    pfree(str);
+                }
+                break;
+        }
+    }
+
+    /* Write the record */
+    if (avro_file_writer_append_value(state->writer, &state->value) != 0)
+    {
+        error_msg = avro_strerror();
+        ereport(ERROR,
+                (errcode(ERRCODE_IO_ERROR),
+                 errmsg("could not write to Avro file: %s", error_msg)));
+    }
+}
+
+/* Finalize Avro writer */
+static void
+FinalizeAvroWriter(CopyToState cstate)
+{
+    AvroWriterState *state = cstate->format_state.avro_state;
+    int i;
+
+    if (state)
+    {
+        if (state->writer)
+        {
+            avro_value_decref(&state->value);
+            avro_file_writer_close(state->writer);
+        }
+        if (state->schema)
+            avro_schema_decref(state->schema);
+
+        if (state->column_names)
+        {
+            for (i = 0; i < state->num_columns; i++)
+                pfree(state->column_names[i]);
+            pfree(state->column_names);
+        }
+        
+        if (state->column_types)
+            pfree(state->column_types);
+            
+        pfree(state);
+        cstate->format_state.avro_state = NULL;
+    }
 }

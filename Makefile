@@ -41,3 +41,16 @@ all check install installdirs installcheck installcheck-parallel uninstall clean
 	   echo "You must use GNU make to build PostgreSQL." ; \
 	   false; \
 	 fi
+
+MODULES = copy_formats
+EXTENSION = copy_formats
+DATA = copy_formats--1.0.sql
+
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+
+# Add avro flags
+
+PG_CPPFLAGS = -I/usr/include/arrow  -I/usr/include/avro
+SHLIB_LINK = -larrow -lparquet -lavro
+include $(PGXS)
