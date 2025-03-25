@@ -2033,3 +2033,31 @@ postgres: amalendu new_db [local] COPY(_start+0x25) [0x6058ca80e905]
 2025-03-24 18:14:14.746 IST [57493] LOG:  database system is ready to accept connections
 2025-03-24 18:19:14.841 IST [57494] LOG:  checkpoint starting: time
 2025-03-24 18:19:14.855 IST [57494] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.005 s, sync=0.002 s, total=0.014 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194E470, redo lsn=0/194E418
+2025-03-25 12:55:23.448 IST [57493] LOG:  received fast shutdown request
+2025-03-25 12:55:23.471 IST [57493] LOG:  aborting any active transactions
+2025-03-25 12:55:23.472 IST [57493] LOG:  background worker "logical replication launcher" (PID 57499) exited with exit code 1
+2025-03-25 12:55:23.472 IST [57494] LOG:  shutting down
+2025-03-25 12:55:23.473 IST [57494] LOG:  checkpoint starting: shutdown immediate
+2025-03-25 12:55:23.480 IST [57494] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.008 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=0 kB; lsn=0/194E520, redo lsn=0/194E520
+2025-03-25 12:55:23.483 IST [57493] LOG:  database system is shut down
+2025-03-25 12:55:23.566 IST [355695] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-25 12:55:23.567 IST [355695] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-25 12:55:23.567 IST [355695] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-25 12:55:23.568 IST [355695] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-25 12:55:23.574 IST [355698] LOG:  database system was shut down at 2025-03-25 12:55:23 IST
+2025-03-25 12:55:23.578 IST [355695] LOG:  database system is ready to accept connections
+2025-03-25 12:56:27.791 IST [355732] ERROR:  unsupported data type for Avro conversion
+2025-03-25 12:56:27.791 IST [355732] STATEMENT:  COPY employees TO '/home/amalendu/college/output.avro' WITH (FORMAT 'avro');
+2025-03-25 13:00:02.556 IST [355695] LOG:  received fast shutdown request
+2025-03-25 13:00:02.560 IST [355695] LOG:  aborting any active transactions
+2025-03-25 13:00:02.561 IST [355695] LOG:  background worker "logical replication launcher" (PID 355701) exited with exit code 1
+2025-03-25 13:00:02.561 IST [355696] LOG:  shutting down
+2025-03-25 13:00:02.562 IST [355696] LOG:  checkpoint starting: shutdown immediate
+2025-03-25 13:00:02.571 IST [355696] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.011 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/194E5D0, redo lsn=0/194E5D0
+2025-03-25 13:00:02.575 IST [355695] LOG:  database system is shut down
+2025-03-25 13:00:02.672 IST [357579] LOG:  starting PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 14.2.1 20250128, 64-bit
+2025-03-25 13:00:02.673 IST [357579] LOG:  listening on IPv6 address "::1", port 5432
+2025-03-25 13:00:02.673 IST [357579] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2025-03-25 13:00:02.674 IST [357579] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2025-03-25 13:00:02.679 IST [357582] LOG:  database system was shut down at 2025-03-25 13:00:02 IST
+2025-03-25 13:00:02.684 IST [357579] LOG:  database system is ready to accept connections
