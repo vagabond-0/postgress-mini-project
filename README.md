@@ -229,3 +229,101 @@ psql -h hostname -p port dbname
 - Latest versions: https://www.postgresql.org/download/
 - Main website: https://www.postgresql.org/
 - Copyright and license information can be found in the file COPYRIGHT.
+
+
+
+
+## Importing and Exporting Avro Data
+
+PostgreSQL can work with Apache Avro format through extensions and foreign data wrappers. Avro is a data serialization system that provides rich data structures, compact binary data format, and container files for storing persistent data.
+
+### Advantages of Avro Format
+
+1. **Schema Evolution**
+   - Supports forward and backward compatibility
+   - Allows adding, removing, or modifying fields without breaking existing applications
+   - Schema is stored with the data, making it self-describing
+
+2. **Compact Storage**
+   - Binary format results in smaller file sizes compared to JSON or CSV
+   - Efficient serialization and deserialization
+   - Reduces storage costs and network bandwidth
+
+3. **Rich Data Types**
+   - Supports complex data types (arrays, maps, unions)
+   - Built-in compression
+   - Language-agnostic schema definition
+
+### Working with Avro in PostgreSQL
+
+#### Using Foreign Data Wrapper
+
+```sql
+-- Create extension if not already installed
+CREATE EXTENSION avro_fdw;
+
+-- Create foreign server
+CREATE SERVER avro_server
+  FOREIGN DATA WRAPPER avro_fdw
+  OPTIONS (
+    filename '/path/to/data.avro'
+  );
+
+-- Create foreign table
+CREATE FOREIGN TABLE employees_avro (
+    id INTEGER,
+    name TEXT,
+    age INTEGER,
+    department TEXT,
+    salary NUMERIC
+) SERVER avro_server;
+```
+
+#### Sample Avro Schema
+
+```json
+{
+  "type": "record",
+  "name": "Employee",
+  "fields": [
+    {"name": "id", "type": "int"},
+    {"name": "name", "type": "string"},
+    {"name": "age", "type": "int"},
+    {"name": "department", "type": "string"},
+    {"name": "salary", "type": "double"}
+  ]
+}
+```
+
+### Importing Avro Data
+
+```sql
+-- Import data from Avro file using foreign table
+INSERT INTO employees 
+SELECT * FROM employees_avro;
+
+-- Or using COPY command with extension
+COPY employees FROM '/path/to/data.avro' WITH (FORMAT 'avro');
+```
+
+### Exporting to Avro
+
+```sql
+-- Export entire table to Avro format
+COPY employees TO '/path/to/output.avro' WITH (FORMAT 'avro');
+
+-- Export specific query results
+COPY (
+    SELECT * FROM employees 
+    WHERE department = 'Engineering'
+) TO '/path/to/engineers.avro' WITH (FORMAT 'avro');
+```
+
+### Performance Considerations
+
+- Avro provides better performance for:
+  - Large datasets with frequent schema changes
+  - Systems requiring efficient serialization
+  - Applications needing language-independent data exchange
+  - Scenarios where data compression is important
+

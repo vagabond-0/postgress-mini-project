@@ -51,6 +51,6 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 
 # Add avro flags
 
-PG_CPPFLAGS = -I/usr/include/arrow  -I/usr/include/avro
+PG_CPPFLAGS = -I/usr/include/arrow  -I/usr/include/avro -I/usr/include/parquet
 SHLIB_LINK = -larrow -lparquet -lavro
 include $(PGXS)
