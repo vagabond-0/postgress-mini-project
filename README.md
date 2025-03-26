@@ -179,56 +179,6 @@ COPY employees TO '/tmp/employees.json' WITH (FORMAT 'json');
 COPY (SELECT name, department FROM employees) TO '/tmp/emp_names.json' WITH (FORMAT 'json');
 ```
 
-## Running PostgreSQL
-
-### Starting the Server
-
-```bash
-# Start the server
-pg_ctl -D /path/to/data/directory start
-
-# Start with log output
-pg_ctl -D /path/to/data/directory -l logfile start
-```
-
-### Stopping the Server
-
-```bash
-# Stop the server (default: smart shutdown)
-pg_ctl -D /path/to/data/directory stop
-
-# Fast shutdown
-pg_ctl -D /path/to/data/directory stop -m fast
-
-# Immediate shutdown
-pg_ctl -D /path/to/data/directory stop -m immediate
-```
-
-### Checking Server Status
-
-```bash
-pg_ctl -D /path/to/data/directory status
-```
-
-### Database Connection
-
-```bash
-# Connect to a database
-psql dbname
-
-# Connect with specific user
-psql -U username dbname
-
-# Connect to database on different host/port
-psql -h hostname -p port dbname
-```
-
-## Additional Resources
-
-- General documentation: https://www.postgresql.org/docs/17/
-- Latest versions: https://www.postgresql.org/download/
-- Main website: https://www.postgresql.org/
-- Copyright and license information can be found in the file COPYRIGHT.
 
 
 
@@ -326,4 +276,56 @@ COPY (
   - Systems requiring efficient serialization
   - Applications needing language-independent data exchange
   - Scenarios where data compression is important
+ 
+
+## Running PostgreSQL
+
+### Starting the Server
+
+```bash
+# Start the server
+pg_ctl -D /path/to/data/directory start
+
+# Start with log output
+pg_ctl -D /path/to/data/directory -l logfile start
+```
+
+### Stopping the Server
+
+```bash
+# Stop the server (default: smart shutdown)
+pg_ctl -D /path/to/data/directory stop
+
+# Fast shutdown
+pg_ctl -D /path/to/data/directory stop -m fast
+
+# Immediate shutdown
+pg_ctl -D /path/to/data/directory stop -m immediate
+```
+
+### Checking Server Status
+
+```bash
+pg_ctl -D /path/to/data/directory status
+```
+
+### Database Connection
+
+```bash
+# Connect to a database
+psql dbname
+
+# Connect with specific user
+psql -U username dbname
+
+# Connect to database on different host/port
+psql -h hostname -p port dbname
+```
+
+## Additional Resources
+
+- General documentation: https://www.postgresql.org/docs/17/
+- Latest versions: https://www.postgresql.org/download/
+- Main website: https://www.postgresql.org/
+- Copyright and license information can be found in the file COPYRIGHT.
 
