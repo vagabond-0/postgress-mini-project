@@ -2569,63 +2569,152 @@ CopyReadLineJsonBy(CopyFromState cstate)
         }
     }
 }
+/* Add these helper functions */
+static void
+CleanupAvroState(AvroReaderState *state)
+{
+    if (state) {
+        if (state->value.iface) {
+            avro_value_decref(&state->value);
+        }
+        if (state->reader) {
+            avro_file_reader_close(state->reader);
+        }
+        if (state->schema) {
+            avro_schema_decref(state->schema);
+        }
+        if (state->column_names) {
+            for (int i = 0; i < state->num_columns; i++) {
+                if (state->column_names[i]) {
+                    pfree(state->column_names[i]);
+                }
+            }
+            pfree(state->column_names);
+        }
+        if (state->column_types) {
+            pfree(state->column_types);
+        }
+        pfree(state);
+    }
+}
+
+static void
+HandleAvroError(const char *context, AvroReaderState *state)
+{
+    const char *err_msg = avro_strerror();
+    CleanupAvroState(state);
+    ereport(ERROR,
+            (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+             errmsg("Avro error during %s: %s", context, err_msg)));
+}
+
+/* Revised InitAvroReader function */
 static void
 InitAvroReader(CopyFromState cstate)
 {
-	elog(NOTICE, "Initializing Avro reader for file: %s", cstate->filename);
-    AvroReaderState *state;
-    TupleDesc tupdesc;
-    int i;
-    const char *error_msg;
+    AvroReaderState *state = NULL;
+    TupleDesc tupdesc = NULL;
+    avro_value_iface_t *iface = NULL;
     
-    /* Allocate state */
-    state = (AvroReaderState *) palloc0(sizeof(AvroReaderState));
-    cstate->format_state.avro.avro_state = state;
+    PG_TRY();
+    {
+        /* Basic validation */
+        if (!cstate || !cstate->rel || !cstate->filename) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INTERNAL_ERROR),
+                     errmsg("invalid copy state")));
+        }
 
-    /* Get tuple descriptor */
-    tupdesc = RelationGetDescr(cstate->rel);
-    state->num_columns = tupdesc->natts;
-    
-    /* Store column information */
-    state->column_types = (Oid *) palloc(state->num_columns * sizeof(Oid));
-    state->column_names = (char **) palloc(state->num_columns * sizeof(char *));
+        /* Get tuple descriptor */
+        tupdesc = RelationGetDescr(cstate->rel);
+        if (!tupdesc || tupdesc->natts <= 0) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INTERNAL_ERROR),
+                     errmsg("invalid tuple descriptor")));
+        }
 
-    for (i = 0; i < state->num_columns; i++) {
-        Form_pg_attribute att = TupleDescAttr(tupdesc, i);
-        state->column_types[i] = att->atttypid;
-        state->column_names[i] = pstrdup(NameStr(att->attname));
+        /* Allocate state */
+        state = (AvroReaderState *) palloc0(sizeof(AvroReaderState));
+        if (!state) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_OUT_OF_MEMORY),
+                     errmsg("failed to allocate Avro reader state")));
+        }
+
+        /* Initialize state */
+        state->num_columns = tupdesc->natts;
+        state->reader = NULL;
+        state->schema = NULL;
+        state->column_types = (Oid *) palloc0(state->num_columns * sizeof(Oid));
+        state->column_names = (char **) palloc0(state->num_columns * sizeof(char *));
+
+        if (!state->column_types || !state->column_names) {
+            HandleAvroError("memory allocation", state);
+        }
+
+        /* Store column information */
+        for (int i = 0; i < state->num_columns; i++) {
+            Form_pg_attribute att = TupleDescAttr(tupdesc, i);
+            if (!att) {
+                HandleAvroError("attribute access", state);
+            }
+            state->column_types[i] = att->atttypid;
+            state->column_names[i] = pstrdup(NameStr(att->attname));
+            if (!state->column_names[i]) {
+                HandleAvroError("column name allocation", state);
+            }
+        }
+
+        /* Open Avro file */
+        if (avro_file_reader(cstate->filename, &state->reader) != 0) {
+            HandleAvroError("file open", state);
+        }
+
+        /* Get schema */
+        state->schema = avro_file_reader_get_writer_schema(state->reader);
+        if (!state->schema) {
+            HandleAvroError("schema access", state);
+        }
+
+        /* Validate schema */
+        size_t schema_size = avro_schema_record_size(state->schema);
+        if (schema_size != state->num_columns) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("schema mismatch: Avro has %zu fields, table has %d columns",
+                           schema_size, state->num_columns)));
+        }
+
+        /* Create value reader */
+        iface = avro_generic_class_from_schema(state->schema);
+        if (!iface) {
+            HandleAvroError("value interface creation", state);
+        }
+
+        if (avro_generic_value_new(iface, &state->value) != 0) {
+            avro_value_iface_decref(iface);
+            HandleAvroError("value creation", state);
+        }
+
+        /* Store state */
+        cstate->format_state.avro.avro_state = state;
+
+        /* Cleanup interface */
+        if (iface) {
+            avro_value_iface_decref(iface);
+        }
     }
-
-    /* Open Avro file reader */
-    if (avro_file_reader(cstate->filename, &state->reader)) {
-        error_msg = avro_strerror();
-        ereport(ERROR,
-                (errcode(ERRCODE_IO_ERROR),
-                 errmsg("could not open Avro file %s: %s", 
-                       cstate->filename, error_msg)));
+    PG_CATCH();
+    {
+        if (iface) {
+            avro_value_iface_decref(iface);
+        }
+        CleanupAvroState(state);
+        PG_RE_THROW();
     }
-
-    /* Get and validate schema */
-    state->schema = avro_file_reader_get_writer_schema(state->reader);
-    if (!state->schema) {
-        ereport(ERROR,
-                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-                 errmsg("could not get Avro schema from file")));
-    }
-
-    /* Check schema matches table structure */
-    if (avro_schema_record_size(state->schema) != state->num_columns) {
-        ereport(ERROR,
-                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-                 errmsg("Avro schema has %d fields but table has %d columns",
-					avro_schema_record_size(state->schema),
-                       state->num_columns)));
-    }
-
-    /* Create Avro value for reading */
-    avro_value_iface_t *iface = avro_generic_class_from_schema(state->schema);
-    avro_generic_value_new(iface, &state->value);
+    PG_END_TRY();
 }
+
 
 static bool
 ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
@@ -2633,7 +2722,12 @@ ReadRowFromAvro(CopyFromState cstate, Datum *values, bool *nulls)
     AvroReaderState *state = cstate->format_state.avro.avro_state;
     int i;
     int ret;
-    
+	
+	if (!state || !state->reader) {
+        ereport(ERROR,
+                (errcode(ERRCODE_INTERNAL_ERROR),
+                 errmsg("Avro reader state is invalid")));
+    }
     /* Read next record */
     ret = avro_file_reader_read_value(state->reader, &state->value);
     if (ret != 0) {
@@ -2744,24 +2838,11 @@ conversion_error:
     return true;
 }
 
-
 static void
 FinalizeAvroReader(CopyFromState cstate)
 {
-    if (cstate->format_state.avro.avro_state) {
-        AvroReaderState *state = cstate->format_state.avro.avro_state;
-        
-        avro_value_decref(&state->value);
-        avro_file_reader_close(state->reader);
-        avro_schema_decref(state->schema);
-        
-        for (int i = 0; i < state->num_columns; i++)
-            pfree(state->column_names[i]);
-        
-        pfree(state->column_names);
-        pfree(state->column_types);
-        pfree(state);
-        
+    if (cstate && cstate->format_state.avro.avro_state) {
+        CleanupAvroState(cstate->format_state.avro.avro_state);
         cstate->format_state.avro.avro_state = NULL;
     }
 }
