@@ -41,8 +41,7 @@
 #include "utils/lsyscache.h"
 #include "catalog/pg_type.h"
 #include "access/tupdesc.h"
-#include <avro.h>
-#include "parquet.h"      
+#include <avro.h>    
 /*
  * Represents the different dest cases we need to worry about at
  * the bottom level
@@ -126,14 +125,7 @@ typedef struct AvroWriterState
     char **column_names;
 } AvroWriterState;
 
-typedef struct ParquetWriterState
-{
-    parquet_writer_t *writer;
-    int num_columns;
-    Oid *column_types;
-    char **column_names;
-    int64 num_rows;
-} ParquetWriterState;
+
 /* NOTE: there's a copy of this in copyfromparse.c */
 static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
 
@@ -163,10 +155,7 @@ static void InitAvroWriter(CopyToState cstate);
 static void WriteRowToAvro(CopyToState cstate, TupleTableSlot *slot);
 static void FinalizeAvroWriter(CopyToState cstate);
 
-//Parquet handling
-static void InitParquetWriter(CopyToState cstate);
-static void WriteRowToParquet(CopyToState cstate, TupleTableSlot *slot);
-static void FinalizeParquetWriter(CopyToState cstate);
+
 /*
  * Send copy start/stop messages for frontend copies.  These have changed
  * in past protocol redesigns.
@@ -889,35 +878,6 @@ DoCopyTo(CopyToState cstate)
             }
             
             FinalizeAvroWriter(cstate);
-		}else if(cstate->opts.parquet_mode){
-			InitParquetWriter(cstate);
-        
-			if (cstate->rel)
-			{
-				TupleTableSlot *slot = table_slot_create(cstate->rel, NULL);
-				TableScanDesc scandesc;
-
-				scandesc = table_beginscan(cstate->rel, GetActiveSnapshot(), 0, NULL);
-				
-				while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
-				{
-					CHECK_FOR_INTERRUPTS();
-					WriteRowToParquet(cstate, slot);
-					processed++;
-				}
-
-				ExecDropSingleTupleTableSlot(slot);
-				table_endscan(scandesc);
-			}
-			else
-			{
-				// Handle query case
-				ExecutorRun(cstate->queryDesc, ForwardScanDirection, 0, true);
-				processed = ((DR_copy *) cstate->queryDesc->dest)->processed;
-			}
-
-			FinalizeParquetWriter(cstate);
-			return processed;
 		}
 		else
 		{
@@ -1744,229 +1704,3 @@ FinalizeAvroWriter(CopyToState cstate)
     }
 }
 
-static void
-InitParquetWriter(CopyToState cstate)
-{
-    ParquetWriterState *state;
-    TupleDesc tupdesc;
-    parquet_schema_t *schema;
-    int i;
-
-    /* Allocate state */
-    state = (ParquetWriterState *) palloc0(sizeof(ParquetWriterState));
-    cstate->format_state.parquet_state = state;
-
-    /* Get tuple descriptor */
-    tupdesc = cstate->rel ? RelationGetDescr(cstate->rel) : 
-                           cstate->queryDesc->tupDesc;
-
-    /* Store column information */
-    state->num_columns = tupdesc->natts;
-    state->column_types = (Oid *) palloc(state->num_columns * sizeof(Oid));
-    state->column_names = (char **) palloc(state->num_columns * sizeof(char *));
-    state->num_rows = 0;
-
-    /* Create Parquet schema */
-    schema = parquet_schema_create();
-
-    for (i = 0; i < state->num_columns; i++)
-    {
-        Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
-        parquet_type_t field_type;
-
-        state->column_types[i] = attr->atttypid;
-        state->column_names[i] = pstrdup(NameStr(attr->attname));
-
-        /* Map PostgreSQL types to Parquet types */
-        switch (attr->atttypid)
-        {
-            case INT2OID:
-                field_type = PARQUET_TYPE_INT16;
-                break;
-            case INT4OID:
-                field_type = PARQUET_TYPE_INT32;
-                break;
-            case INT8OID:
-                field_type = PARQUET_TYPE_INT64;
-                break;
-            case FLOAT4OID:
-                field_type = PARQUET_TYPE_FLOAT;
-                break;
-            case FLOAT8OID:
-                field_type = PARQUET_TYPE_DOUBLE;
-                break;
-            case BOOLOID:
-                field_type = PARQUET_TYPE_BOOLEAN;
-                break;
-            case TEXTOID:
-            case VARCHAROID:
-            case BPCHAROID:
-            case NAMEOID:
-                field_type = PARQUET_TYPE_BYTE_ARRAY;
-                break;
-            case TIMESTAMPOID:
-            case TIMESTAMPTZOID:
-                field_type = PARQUET_TYPE_INT64;
-                break;
-            case DATEOID:
-                field_type = PARQUET_TYPE_INT32;
-                break;
-            default:
-                /* For unsupported types, store as string */
-                field_type = PARQUET_TYPE_BYTE_ARRAY;
-                break;
-        }
-
-        parquet_schema_add_column(schema, 
-                                state->column_names[i],
-                                field_type,
-                                PARQUET_REPETITION_REQUIRED);
-    }
-
-    /* Create Parquet writer */
-    state->writer = parquet_writer_create(cstate->filename, schema);
-    if (!state->writer)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_IO_ERROR),
-                 errmsg("could not create Parquet file: %s",
-                        parquet_strerror(parquet_error()))));
-    }
-
-    /* Set compression (optional) */
-    parquet_writer_set_compression(state->writer, PARQUET_COMPRESSION_SNAPPY);
-}
-
-/* Write a row to Parquet file */
-static void
-WriteRowToParquet(CopyToState cstate, TupleTableSlot *slot)
-{
-    ParquetWriterState *state = cstate->format_state.parquet_state;
-    parquet_row_t *row;
-    int i;
-
-    row = parquet_row_create(state->writer);
-
-    for (i = 0; i < state->num_columns; i++)
-    {
-        Datum value;
-        bool isnull;
-        Oid type = state->column_types[i];
-
-        value = slot_getattr(slot, i + 1, &isnull);
-
-        if (isnull)
-        {
-            parquet_row_set_null(row, i);
-            continue;
-        }
-
-        switch (type)
-        {
-            case INT2OID:
-                parquet_row_set_int16(row, i, DatumGetInt16(value));
-                break;
-            case INT4OID:
-                parquet_row_set_int32(row, i, DatumGetInt32(value));
-                break;
-            case INT8OID:
-                parquet_row_set_int64(row, i, DatumGetInt64(value));
-                break;
-            case FLOAT4OID:
-                parquet_row_set_float(row, i, DatumGetFloat4(value));
-                break;
-            case FLOAT8OID:
-                parquet_row_set_double(row, i, DatumGetFloat8(value));
-                break;
-            case BOOLOID:
-                parquet_row_set_bool(row, i, DatumGetBool(value));
-                break;
-            case TEXTOID:
-            case VARCHAROID:
-            case BPCHAROID:
-            case NAMEOID:
-                {
-                    char *str = TextDatumGetCString(value);
-                    parquet_row_set_string(row, i, str);
-                    pfree(str);
-                }
-                break;
-            case TIMESTAMPOID:
-            case TIMESTAMPTZOID:
-                {
-                    Timestamp ts = DatumGetTimestamp(value);
-                    /* Convert to microseconds since epoch */
-                    int64 micros = (ts + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY));
-                    parquet_row_set_int64(row, i, micros);
-                }
-                break;
-            case DATEOID:
-                {
-                    DateADT date = DatumGetDateADT(value);
-                    /* Convert to days since epoch */
-                    int32 days = date - (POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE);
-                    parquet_row_set_int32(row, i, days);
-                }
-                break;
-            default:
-                {
-                    /* For unsupported types, convert to string */
-                    Oid typoutput;
-                    bool typisvarlena;
-                    char *str;
-
-                    getTypeOutputInfo(type, &typoutput, &typisvarlena);
-                    str = OidOutputFunctionCall(typoutput, value);
-                    parquet_row_set_string(row, i, str);
-                    pfree(str);
-                }
-                break;
-        }
-    }
-
-    if (parquet_writer_write_row(state->writer, row) != 0)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_IO_ERROR),
-                 errmsg("could not write to Parquet file: %s",
-                        parquet_strerror(parquet_error()))));
-    }
-
-    state->num_rows++;
-    parquet_row_free(row);
-}
-
-/* Finalize Parquet writer */
-static void
-FinalizeParquetWriter(CopyToState cstate)
-{
-    ParquetWriterState *state = cstate->format_state.parquet_state;
-    int i;
-
-    if (state)
-    {
-        if (state->writer)
-        {
-            if (parquet_writer_close(state->writer) != 0)
-            {
-                ereport(ERROR,
-                        (errcode(ERRCODE_IO_ERROR),
-                         errmsg("could not finalize Parquet file: %s",
-                                parquet_strerror(parquet_error()))));
-            }
-        }
-
-        if (state->column_names)
-        {
-            for (i = 0; i < state->num_columns; i++)
-                pfree(state->column_names[i]);
-            pfree(state->column_names);
-        }
-        
-        if (state->column_types)
-            pfree(state->column_types);
-            
-        pfree(state);
-        cstate->format_state.parquet_state = NULL;
-    }
-}
