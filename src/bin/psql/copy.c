@@ -16,6 +16,17 @@
 #include "prompt.h"
 #include "settings.h"
 #include "stringutils.h"
+#include <pthread.h>
+pthread_mutex_t copy_conn_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+struct copy_thread_data {
+    char *buffer;
+    size_t buffer_size;
+    int thread_id;
+    PGconn *conn;
+    bool success;
+};
+#define NUM_COPY_THREADS 4
 
 struct copy_options
 {
@@ -150,7 +161,6 @@ preview_copy_data(struct copy_options *opts)
 	
 	response = getchar();
 	
-	/* Clear any remaining characters in the input buffer */
 	while ((c = getchar()) != '\n' && c != EOF);
 	
 	if (response != 'y' && response != 'Y') {
@@ -182,8 +192,6 @@ parse_slash_copy(const char *args)
 					0, false, false, pset.encoding);
 	if (!token)
 		goto error;
-
-	/* Check for preview command */
 	if (pg_strcasecmp(token, "preview") == 0)
 	{
 		result->preview = true;
@@ -193,7 +201,6 @@ parse_slash_copy(const char *args)
 			goto error;
 	}
 
-	/* Handle BINARY keyword for backward compatibility */
 	if (pg_strcasecmp(token, "binary") == 0)
 	{
 		xstrcat(&result->before_tofrom, token);
@@ -203,7 +210,6 @@ parse_slash_copy(const char *args)
 			goto error;
 	}
 
-	/* Handle COPY (query) case */
 	if (token[0] == '(')
 	{
 		int			parens = 1;
@@ -343,7 +349,6 @@ do_copy(const char *args)
 	if (!options)
 		return false;
 
-	/* Handle preview command */
 	if (options->preview)
 	{
 		bool preview_success = preview_copy_data(options);
@@ -351,7 +356,6 @@ do_copy(const char *args)
 			free_copy_options(options);
 			return false;
 		}
-		// Remove the preview flag and continue with the actual copy operation
 		options->preview = false;
 	}
 
@@ -480,209 +484,306 @@ do_copy(const char *args)
 	return success;
 }
 
+static void*
+process_copy_out_chunk(void *arg)
+{
+    struct copy_thread_data *data = (struct copy_thread_data *)arg;
+    
+    if (fwrite(data->buffer, 1, data->buffer_size, (FILE*)data->conn) != data->buffer_size) {
+        data->success = false;
+        pg_log_error("Thread %d: failed to write COPY data", data->thread_id);
+    } else {
+        data->success = true;
+    }
+    
+    return NULL;
+}
 
 bool
 handleCopyOut(PGconn *conn, FILE *copystream, PGresult **res)
 {
-	bool		OK = true;
-	char	   *buf;
-	int			ret;
+    bool        OK = true;
+    char       *buf;
+    int         ret;
+    
+   
+    for (;;)
+    {
+        ret = PQgetCopyData(conn, &buf, 0);
 
-	for (;;)
-	{
-		ret = PQgetCopyData(conn, &buf, 0);
+        if (ret < 0)
+            break;
 
-		if (ret < 0)
-			break;
+        if (buf)
+        {
+            if (OK && copystream && fwrite(buf, 1, ret, copystream) != ret)
+            {
+                pg_log_error("could not write COPY data: %m");
+                OK = false;
+            }
+            PQfreemem(buf);
+        }
+    }
 
-		if (buf)
-		{
-			if (OK && copystream && fwrite(buf, 1, ret, copystream) != ret)
-			{
-				pg_log_error("could not write COPY data: %m");
-				OK = false;
-			}
-			PQfreemem(buf);
-		}
-	}
+    if (OK && copystream && fflush(copystream))
+    {
+        pg_log_error("could not write COPY data: %m");
+        OK = false;
+    }
 
-	if (OK && copystream && fflush(copystream))
-	{
-		pg_log_error("could not write COPY data: %m");
-		OK = false;
-	}
+    if (ret == -2)
+    {
+        pg_log_error("COPY data transfer failed: %s", PQerrorMessage(conn));
+        OK = false;
+    }
 
-	if (ret == -2)
-	{
-		pg_log_error("COPY data transfer failed: %s", PQerrorMessage(conn));
-		OK = false;
-	}
+    *res = PQgetResult(conn);
+    if (PQresultStatus(*res) != PGRES_COMMAND_OK)
+    {
+        pg_log_info("%s", PQerrorMessage(conn));
+        OK = false;
+    }
 
-	*res = PQgetResult(conn);
-	if (PQresultStatus(*res) != PGRES_COMMAND_OK)
-	{
-		pg_log_info("%s", PQerrorMessage(conn));
-		OK = false;
-	}
-
-	return OK;
+    return OK;
 }
 
 #define COPYBUFSIZ 8192
+#define THREAD_BUFFER_SIZE (COPYBUFSIZ * 4) 
+static void* 
+process_copy_chunk(void *arg)
+{
+    struct copy_thread_data *data = (struct copy_thread_data *)arg;
+    
+    /* Lock the mutex before writing to the connection */
+    pthread_mutex_lock(&copy_conn_mutex);
+    
+    /* Process the buffer */
+    if (PQputCopyData(data->conn, data->buffer, data->buffer_size) <= 0) {
+        data->success = false;
+        pg_log_error("Thread %d: failed to put copy data", data->thread_id);
+    } else {
+        data->success = true;
+    }
+    
+    /* Unlock the mutex */
+    pthread_mutex_unlock(&copy_conn_mutex);
+    
+    return NULL;
+}
 
 bool
 handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
 {
-	bool		OK;
-	char		buf[COPYBUFSIZ];
-	bool		showprompt;
+    bool        OK;
+    bool        showprompt;
+    pthread_t   threads[NUM_COPY_THREADS];
+    struct copy_thread_data thread_data[NUM_COPY_THREADS];
+    char       *thread_buffers[NUM_COPY_THREADS];
+    int         active_thread = 0;
+    bool        threads_initialized = false;
+    int         i;
 
-	if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
-	{
-		PQputCopyEnd(conn,
-					 (PQprotocolVersion(conn) < 3) ? NULL :
-					 _("canceled by user"));
+    for (i = 0; i < NUM_COPY_THREADS; i++) {
+        thread_buffers[i] = malloc(THREAD_BUFFER_SIZE);
+        if (!thread_buffers[i]) {
+            pg_log_error("Out of memory allocating thread buffer");
+          
+            while (--i >= 0)
+                free(thread_buffers[i]);
+            return false;
+        }
+    }
 
-		OK = false;
-		goto copyin_cleanup;
-	}
+    if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
+    {
+       
+        PQputCopyEnd(conn, (PQprotocolVersion(conn) < 3) ? NULL : 
+                    _("canceled by user"));
+        
+        if (threads_initialized) {
+            for (i = 0; i < NUM_COPY_THREADS; i++) {
+                pthread_join(threads[i], NULL);
+                free(thread_buffers[i]);
+            }
+        }
+        
+        OK = false;
+        goto copyin_cleanup;
+    }
 
-	if (isatty(fileno(copystream)))
-	{
-		showprompt = true;
-		if (!pset.quiet)
-			puts(_("Enter data to be copied followed by a newline.\n"
-				   "End with a backslash and a period on a line by itself, or an EOF signal."));
-	}
-	else
-		showprompt = false;
+    if (isatty(fileno(copystream)))
+    {
+        showprompt = true;
+        if (!pset.quiet)
+            puts(_("Enter data to be copied followed by a newline.\n"
+                   "End with a backslash and a period on a line by itself, or an EOF signal."));
+    }
+    else
+        showprompt = false;
 
-	OK = true;
+    OK = true;
+    threads_initialized = true;
+    if (isbinary)
+    {
+        char buffer[COPYBUFSIZ];
+        
+        if (showprompt)
+        {
+            const char *prompt = get_prompt(PROMPT_COPY, NULL);
+            fputs(prompt, stdout);
+            fflush(stdout);
+        }
 
-	if (isbinary)
-	{
-		if (showprompt)
-		{
-			const char *prompt = get_prompt(PROMPT_COPY, NULL);
+        for (;;)
+        {
+            int         buflen;
 
-			fputs(prompt, stdout);
-			fflush(stdout);
-		}
+            sigint_interrupt_enabled = true;
+            buflen = fread(buffer, 1, COPYBUFSIZ, copystream);
+            sigint_interrupt_enabled = false;
 
-		for (;;)
-		{
-			int			buflen;
+            if (buflen <= 0)
+                break;
 
-			sigint_interrupt_enabled = true;
+            if (PQputCopyData(conn, buffer, buflen) <= 0)
+            {
+                OK = false;
+                break;
+            }
+        }
+    }
+    else
+    {
+        bool        copydone = false;
+        size_t      buflen[NUM_COPY_THREADS] = {0};
+        bool        at_line_begin = true;
+        int         current_thread = 0;
+        bool        thread_active[NUM_COPY_THREADS] = {false};
 
-			buflen = fread(buf, 1, COPYBUFSIZ, copystream);
+        for (i = 0; i < NUM_COPY_THREADS; i++) {
+            thread_data[i].thread_id = i;
+            thread_data[i].conn = conn;
+            thread_data[i].buffer = thread_buffers[i];
+            thread_data[i].buffer_size = 0;
+            thread_data[i].success = true;
+        }
 
-			sigint_interrupt_enabled = false;
+        while (!copydone)
+        {
+            char *fgresult;
+            
+            if (at_line_begin && showprompt)
+            {
+                const char *prompt = get_prompt(PROMPT_COPY, NULL);
+                fputs(prompt, stdout);
+                fflush(stdout);
+            }
+            if (thread_active[current_thread]) {
+                pthread_join(threads[current_thread], NULL);
+                thread_active[current_thread] = false;
+                
+                if (!thread_data[current_thread].success) {
+                    OK = false;
+                    break;
+                }
+            }
 
-			if (buflen <= 0)
-				break;
+            sigint_interrupt_enabled = true;
+            
+            fgresult = fgets(thread_buffers[current_thread] + buflen[current_thread], 
+                             THREAD_BUFFER_SIZE - buflen[current_thread], 
+                             copystream);
+            
+            sigint_interrupt_enabled = false;
 
-			if (PQputCopyData(conn, buf, buflen) <= 0)
-			{
-				OK = false;
-				break;
-			}
-		}
-	}
-	else
-	{
-		bool		copydone = false;
-		int			buflen;
-		bool		at_line_begin = true;
+            if (!fgresult)
+                copydone = true;
+            else
+            {
+                int         linelen = strlen(fgresult);
+                buflen[current_thread] += linelen;
 
-		buflen = 0;
-		while (!copydone)
-		{
-			char	   *fgresult;
+                if (thread_buffers[current_thread][buflen[current_thread] - 1] == '\n')
+                {
+                    if (at_line_begin)
+                    {
+                        if ((linelen == 3 && memcmp(fgresult, "\\.\n", 3) == 0) ||
+                            (linelen == 4 && memcmp(fgresult, "\\.\r\n", 4) == 0))
+                        {
+                            copydone = true;
+                        }
+                    }
 
-			if (at_line_begin && showprompt)
-			{
-				const char *prompt = get_prompt(PROMPT_COPY, NULL);
+                    if (copystream == pset.cur_cmd_source)
+                    {
+                        pset.lineno++;
+                        pset.stmt_lineno++;
+                    }
+                    at_line_begin = true;
+                }
+                else
+                    at_line_begin = false;
+            }
 
-				fputs(prompt, stdout);
-				fflush(stdout);
-			}
+            if (buflen[current_thread] >= THREAD_BUFFER_SIZE - 128 || 
+                (copydone && buflen[current_thread] > 0))
+            {
+                thread_data[current_thread].buffer_size = buflen[current_thread];
+                
+                if (pthread_create(&threads[current_thread], NULL, 
+                                  process_copy_chunk, &thread_data[current_thread]) != 0) {
+                    if (PQputCopyData(conn, thread_buffers[current_thread], 
+                                     buflen[current_thread]) <= 0) {
+                        OK = false;
+                        break;
+                    }
+                } else {
+                    thread_active[current_thread] = true;
+                }
+                
+                buflen[current_thread] = 0;
+                current_thread = (current_thread + 1) % NUM_COPY_THREADS;
+            }
+        }
 
-			sigint_interrupt_enabled = true;
+        for (i = 0; i < NUM_COPY_THREADS; i++) {
+            if (thread_active[i]) {
+                pthread_join(threads[i], NULL);
+                if (!thread_data[i].success) {
+                    OK = false;
+                }
+            }
+        }
+    }
+    for (i = 0; i < NUM_COPY_THREADS; i++) {
+        free(thread_buffers[i]);
+    }
 
-			fgresult = fgets(&buf[buflen], COPYBUFSIZ - buflen, copystream);
+    if (ferror(copystream))
+        OK = false;
 
-			sigint_interrupt_enabled = false;
-
-			if (!fgresult)
-				copydone = true;
-			else
-			{
-				int			linelen;
-
-				linelen = strlen(fgresult);
-				buflen += linelen;
-
-				if (buf[buflen - 1] == '\n')
-				{
-					if (at_line_begin)
-					{
-						if ((linelen == 3 && memcmp(fgresult, "\\.\n", 3) == 0) ||
-							(linelen == 4 && memcmp(fgresult, "\\.\r\n", 4) == 0))
-						{
-							copydone = true;
-						}
-					}
-
-					if (copystream == pset.cur_cmd_source)
-					{
-						pset.lineno++;
-						pset.stmt_lineno++;
-					}
-					at_line_begin = true;
-				}
-				else
-					at_line_begin = false;
-			}
-
-			if (buflen >= COPYBUFSIZ - 5 || (copydone && buflen > 0))
-			{
-				if (PQputCopyData(conn, buf, buflen) <= 0)
-				{
-					OK = false;
-					break;
-				}
-
-				buflen = 0;
-			}
-		}
-	}
-
-	if (ferror(copystream))
-		OK = false;
-
-	if (PQputCopyEnd(conn,
-					 (OK || PQprotocolVersion(conn) < 3) ? NULL :
-					 _("aborted because of read failure")) <= 0)
-		OK = false;
+    if (PQputCopyEnd(conn,
+                     (OK || PQprotocolVersion(conn) < 3) ? NULL :
+                     _("aborted because of read failure")) <= 0)
+        OK = false;
 
 copyin_cleanup:
 
-	clearerr(copystream);
+    clearerr(copystream);
 
-	while (*res = PQgetResult(conn), PQresultStatus(*res) == PGRES_COPY_IN)
-	{
-		OK = false;
-		PQclear(*res);
-		PQputCopyEnd(conn,
-					 (PQprotocolVersion(conn) < 3) ? NULL :
-					 _("trying to exit copy mode"));
-	}
-	if (PQresultStatus(*res) != PGRES_COMMAND_OK)
-	{
-		pg_log_info("%s", PQerrorMessage(conn));
-		OK = false;
-	}
+    while (*res = PQgetResult(conn), PQresultStatus(*res) == PGRES_COPY_IN)
+    {
+        OK = false;
+        PQclear(*res);
+        PQputCopyEnd(conn,
+                     (PQprotocolVersion(conn) < 3) ? NULL :
+                     _("trying to exit copy mode"));
+    }
+    if (PQresultStatus(*res) != PGRES_COMMAND_OK)
+    {
+        pg_log_info("%s", PQerrorMessage(conn));
+        OK = false;
+    }
 
-	return OK;
+    return OK;
 }
