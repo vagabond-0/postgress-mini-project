@@ -74,7 +74,7 @@ typedef struct CopyFromStateData
 	char	   *filename;		/* filename, or NULL for STDIN */
 	bool		is_program;		/* is 'filename' a program to popen? */
 	copy_data_source_cb data_source_cb; /* function for reading data */
-
+	struct AvroFileState *avro_state;
 	CopyFormatOptions opts;
 	bool	   *convert_select_flags;	/* per-column CSV/TEXT CS flags */
 	Node	   *whereClause;	/* WHERE condition (or NULL) */
@@ -162,7 +162,7 @@ typedef struct CopyFromStateData
 	bool		input_reached_error;	/* true if a conversion error happened */
 	/* Shorthand for number of unconsumed bytes available in input_buf */
 #define INPUT_BUF_BYTES(cstate) ((cstate)->input_buf_len - (cstate)->input_buf_index)
-
+#define AVRO_ENCODING -2
 	/*
 	 * raw_buf holds raw input data read from the data source (file or client
 	 * connection), not yet converted to the database encoding.  Like with

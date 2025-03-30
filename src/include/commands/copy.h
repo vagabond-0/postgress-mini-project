@@ -115,7 +115,7 @@ extern char *CopyLimitPrintoutLength(const char *str);
 extern uint64 CopyFrom(CopyFromState cstate);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
-
+#define AVRO_ENCODING -2
 /*
  * internal prototypes
  */

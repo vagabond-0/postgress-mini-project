@@ -78,7 +78,17 @@
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
-
+#define AVRO_SYNC_MARKER_SIZE 16
+#define AVRO_MAGIC_SIZE 4
+#define AVRO_MAX_BLOCK_SIZE (1024*1024*10) /* 10MB */
+#define AVRO_MAX_STRING_LENGTH 1048576
+typedef struct AvroFileState {
+    char        sync_marker[AVRO_SYNC_MARKER_SIZE];
+    char       *schema;           /* JSON schema string */
+    int64       records_remaining;/* Records left in current block */
+    int64       bytes_remaining;  /* Bytes left in current block */
+    bool        header_read;      /* Has header been read? */
+} AvroFileState;
 /*
  * These macros centralize code used to process line_buf and input_buf buffers.
  * They are macros because they often do continue/break control and to avoid
@@ -171,6 +181,13 @@ static int	CopyReadBinaryData(CopyFromState cstate, char *dest, int nbytes);
 static bool CopyReadLineJson(CopyFromState cstate);
 static bool CopyReadLineJsonBy(CopyFromState cstate);
 
+/* Function for handling Avro*/
+static bool ReadAvroHeader(CopyFromState cstate);
+static bool ReadAvroBlock(CopyFromState cstate);
+static bool ReadAvroVariableLengthInt(CopyFromState cstate, int64 *value);
+static void CleanupAvroState(CopyFromState cstate);
+static bool CopyReadAvroRecord(CopyFromState cstate, char ***fields, int *nfields);
+static bool CopyReadAvroRecord(CopyFromState cstate, char ***fields, int *nfields);
 void
 ReceiveCopyBegin(CopyFromState cstate)
 {
@@ -194,6 +211,18 @@ ReceiveCopyBegin(CopyFromState cstate)
 void
 ReceiveCopyBinaryHeader(CopyFromState cstate)
 {
+	if (cstate->opts.file_encoding == AVRO_ENCODING)
+    {
+        /* Initialize Avro state */
+        cstate->avro_state = palloc0(sizeof(AvroFileState));
+        
+        /* Read Avro header */
+        if (!ReadAvroHeader(cstate))
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("invalid Avro file header")));
+        return;
+    }
 	char		readSig[11];
 	int32		tmp;
 
@@ -1044,80 +1073,130 @@ NextCopyFrom(CopyFromState cstate, ExprContext *econtext,
 
 		Assert(fieldno == attr_count);
 	}
-	else
-	{
-		/* binary */
-		int16		fld_count;
-		ListCell   *cur;
+	 else /* binary format */
+    {
+        if (cstate->opts.file_encoding == AVRO_ENCODING)
+        {
+            /* Handle Avro format */
+            char **fields = NULL;
+            int nfields = 0;
+            ListCell *cur;
+            int fieldno = 0;
 
-		cstate->cur_lineno++;
+            /* Read the next Avro record */
+            if (!CopyReadAvroRecord(cstate, &fields, &nfields))
+            {
+                CleanupAvroState(cstate);
+                return false;
+            }
 
-		if (!CopyGetInt16(cstate, &fld_count))
-		{
-			/* EOF detected (end of file, or protocol-level EOF) */
-			return false;
-		}
+            /* Process each field from the Avro record */
+            foreach(cur, cstate->attnumlist)
+            {
+                int attnum = lfirst_int(cur);
+                int m = attnum - 1;
+                Form_pg_attribute att = TupleDescAttr(tupDesc, m);
 
-		if (fld_count == -1)
-		{
-			/*
-			 * Received EOF marker.  Wait for the protocol-level EOF, and
-			 * complain if it doesn't come immediately.  In COPY FROM STDIN,
-			 * this ensures that we correctly handle CopyFail, if client
-			 * chooses to send that now.  When copying from file, we could
-			 * ignore the rest of the file like in text mode, but we choose to
-			 * be consistent with the COPY FROM STDIN case.
-			 */
-			char		dummy;
+                if (fieldno >= nfields)
+                    ereport(ERROR,
+                            (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                             errmsg("missing data for column \"%s\"",
+                                    NameStr(att->attname))));
 
-			if (CopyReadBinaryData(cstate, &dummy, 1) > 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("received copy data after EOF marker")));
-			return false;
-		}
+                cstate->cur_attname = NameStr(att->attname);
+                cstate->cur_attval = fields[fieldno];
 
-		if (fld_count != attr_count)
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("row field count is %d, expected %d",
-							(int) fld_count, attr_count)));
+                if (fields[fieldno] != NULL)
+                {
+                    if (!InputFunctionCallSafe(&in_functions[m],
+                                             fields[fieldno],
+                                             typioparams[m],
+                                             att->atttypmod,
+                                             (Node *) cstate->escontext,
+                                             &values[m]))
+                    {
+                        if (cstate->opts.on_error == COPY_ON_ERROR_STOP)
+                            ereport(ERROR,
+                                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                                     errmsg("invalid input syntax for type %s: \"%s\"",
+                                            format_type_be(att->atttypid),
+                                            fields[fieldno])));
 
-		foreach(cur, cstate->attnumlist)
-		{
-			int			attnum = lfirst_int(cur);
-			int			m = attnum - 1;
-			Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+                        cstate->num_errors++;
+                    }
+                    else
+                    {
+                        nulls[m] = false;
+                    }
+                }
 
-			cstate->cur_attname = NameStr(att->attname);
-			values[m] = CopyReadBinaryAttribute(cstate,
-												&in_functions[m],
-												typioparams[m],
-												att->atttypmod,
-												&nulls[m]);
-			cstate->cur_attname = NULL;
-		}
-	}
+                fieldno++;
+            }
 
+            /* Clean up field data */
+            for (i = 0; i < nfields; i++)
+                if (fields[i])
+                    pfree(fields[i]);
+            pfree(fields);
+        }
+        else
+        {
+            /* Regular binary format */
+            int16       fld_count;
+            ListCell   *cur;
+
+            cstate->cur_lineno++;
+
+            if (!CopyGetInt16(cstate, &fld_count))
+                return false;
+
+            if (fld_count == -1)
+            {
+                char dummy;
+                if (CopyReadBinaryData(cstate, &dummy, 1) > 0)
+                    ereport(ERROR,
+                            (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                             errmsg("received copy data after EOF marker")));
+                return false;
+            }
+
+            if (fld_count != attr_count)
+                ereport(ERROR,
+                        (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                         errmsg("row field count is %d, expected %d",
+                                (int) fld_count, attr_count)));
+
+            foreach(cur, cstate->attnumlist)
+            {
+                int attnum = lfirst_int(cur);
+                int m = attnum - 1;
+                Form_pg_attribute att = TupleDescAttr(tupDesc, m);
+
+                cstate->cur_attname = NameStr(att->attname);
+                values[m] = CopyReadBinaryAttribute(cstate,
+                                                  &in_functions[m],
+                                                  typioparams[m],
+                                                  att->atttypmod,
+                                                  &nulls[m]);
+                cstate->cur_attname = NULL;
+            }
+        }
+    }
 	/*
 	 * Now compute and insert any defaults available for the columns not
 	 * provided by the input data.  Anything not processed here or above will
 	 * remain NULL.
 	 */
-	for (i = 0; i < num_defaults; i++)
-	{
-		/*
-		 * The caller must supply econtext and have switched into the
-		 * per-tuple memory context in it.
-		 */
-		Assert(econtext != NULL);
-		Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
+	 for (i = 0; i < num_defaults; i++)
+    {
+        Assert(econtext != NULL);
+        Assert(CurrentMemoryContext == econtext->ecxt_per_tuple_memory);
 
-		values[defmap[i]] = ExecEvalExpr(defexprs[defmap[i]], econtext,
-										 &nulls[defmap[i]]);
-	}
+        values[defmap[i]] = ExecEvalExpr(defexprs[defmap[i]], econtext,
+                                         &nulls[defmap[i]]);
+    }
 
-	return true;
+    return true;
 }
 
 /*
@@ -2500,5 +2579,437 @@ CopyReadLineJsonBy(CopyFromState cstate)
             pfree(temp_buf.data);
             return true;
         }
+    }
+}
+static const char AVRO_MAGIC[] = {'O', 'b', 'j', '\x01'};
+
+/*
+ * Read a variable-length encoded integer from Avro file
+ */
+static bool
+ReadAvroVariableLengthInt(CopyFromState cstate, int64 *value)
+{
+    uint64_t result = 0;
+    uint32_t shift = 0;
+    uint8_t byte;
+    bool first_byte = true;
+
+    /* Debug output */
+    ereport(DEBUG1,
+            (errmsg("Starting to read varint at position %ld", cstate->raw_buf_index)));
+
+    do {
+        /* Read one byte */
+        if (CopyReadBinaryData(cstate, &byte, 1) != 1)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("unexpected EOF while reading varint")));
+            return false;
+        }
+
+        /* Debug output */
+        ereport(DEBUG1,
+                (errmsg("Read byte: 0x%02x", byte)));
+
+        /* For the first byte, handle sign bit specially */
+        if (first_byte)
+        {
+            result = (byte & 0x7F);
+            first_byte = false;
+        }
+        else
+        {
+            /* Subsequent bytes */
+            if (shift >= 28 && (byte & 0x7F) > 15)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                         errmsg("varint too large")));
+                return false;
+            }
+            result |= ((uint64_t)(byte & 0x7F) << shift);
+        }
+
+        /* Move to next 7 bits */
+        shift += 7;
+
+        /* Check if we're done */
+        if ((byte & 0x80) == 0)
+            break;
+
+        /* Prevent overflow */
+        if (shift > 63)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("varint too long")));
+            return false;
+        }
+
+    } while (1);
+
+    *value = (int64)result;
+
+    /* Debug output */
+    ereport(DEBUG1,
+            (errmsg("Decoded varint value: %ld", *value)));
+
+    return true;
+}
+/*
+ * Read an Avro block
+ */
+static bool
+ReadAvroBlock(CopyFromState cstate)
+{
+    AvroFileState *avro_state = cstate->avro_state;
+    char sync_check[AVRO_SYNC_MARKER_SIZE];
+    int64 block_count, block_size;
+
+    /* Debug output */
+    elog(DEBUG1, "Reading Avro block, current position: %ld", cstate->raw_buf_index);
+
+    /* Read block count */
+    if (!ReadAvroVariableLengthInt(cstate, &block_count) || block_count < 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("invalid Avro block count")));
+        return false;
+    }
+
+    /* Read block size */
+    if (!ReadAvroVariableLengthInt(cstate, &block_size) || 
+        block_size < 0 || block_size > AVRO_MAX_BLOCK_SIZE)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("invalid Avro block size: %ld", block_size)));
+        return false;
+    }
+
+    /* Skip the block data for now */
+    if (CopyReadBinaryData(cstate, NULL, block_size) != block_size)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("unexpected end of Avro block data")));
+        return false;
+    }
+
+    /* Read and verify sync marker */
+    if (CopyReadBinaryData(cstate, sync_check, AVRO_SYNC_MARKER_SIZE) 
+        != AVRO_SYNC_MARKER_SIZE)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("could not read Avro sync marker")));
+        return false;
+    }
+
+    /* Debug output of sync markers */
+    elog(DEBUG1, "Stored sync marker: %02x%02x%02x%02x...", 
+         (unsigned char)avro_state->sync_marker[0],
+         (unsigned char)avro_state->sync_marker[1],
+         (unsigned char)avro_state->sync_marker[2],
+         (unsigned char)avro_state->sync_marker[3]);
+    elog(DEBUG1, "Read sync marker: %02x%02x%02x%02x...", 
+         (unsigned char)sync_check[0],
+         (unsigned char)sync_check[1],
+         (unsigned char)sync_check[2],
+         (unsigned char)sync_check[3]);
+
+    /* Verify sync marker */
+    if (memcmp(sync_check, avro_state->sync_marker, AVRO_SYNC_MARKER_SIZE) != 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("invalid Avro sync marker"),
+                 errdetail("Sync marker mismatch at block boundary")));
+        return false;
+    }
+
+    avro_state->records_remaining = block_count;
+    avro_state->bytes_remaining = block_size;
+
+    elog(DEBUG1, "Successfully read Avro block: %ld records, %ld bytes", 
+         block_count, block_size);
+    return true;
+}
+/*
+ * Read Avro file header
+ */
+ static bool
+ReadAvroHeader(CopyFromState cstate)
+{
+    AvroFileState *avro_state = cstate->avro_state;
+    char magic[AVRO_MAGIC_SIZE];
+    StringInfoData schema_buf;
+
+    /* Read magic bytes */
+    if (CopyReadBinaryData(cstate, magic, AVRO_MAGIC_SIZE) != AVRO_MAGIC_SIZE)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("failed to read Avro magic bytes")));
+        return false;
+    }
+
+    /* Debug output */
+    ereport(NOTICE,
+            (errmsg("Avro magic bytes: %02x%02x%02x%02x",
+                    (unsigned char)magic[0],
+                    (unsigned char)magic[1],
+                    (unsigned char)magic[2],
+                    (unsigned char)magic[3])));
+
+    /* Verify magic bytes */
+    if (memcmp(magic, "Obj\x01", AVRO_MAGIC_SIZE) != 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("invalid Avro file magic bytes")));
+        return false;
+    }
+
+    /* Read metadata map length */
+    int64 map_len;
+    if (!ReadAvroVariableLengthInt(cstate, &map_len) || map_len < 0)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("invalid Avro metadata map length")));
+        return false;
+    }
+
+    ereport(NOTICE,
+            (errmsg("Avro metadata map length: %ld", map_len)));
+
+    /* Initialize schema buffer */
+    initStringInfo(&schema_buf);
+
+    /* Read metadata map */
+    for (int64 i = 0; i < map_len; i++)
+    {
+        int64 key_len;
+        
+        /* Read key length */
+        if (!ReadAvroVariableLengthInt(cstate, &key_len))
+        {
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro metadata key length")));
+            return false;
+        }
+
+        /* Sanity check key length */
+        if (key_len <= 0 || key_len > AVRO_MAX_STRING_LENGTH)
+        {
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("invalid Avro metadata key length: %ld", key_len)));
+            return false;
+        }
+
+        /* Read key */
+        char *key = palloc(key_len + 1);
+        if (CopyReadBinaryData(cstate, key, key_len) != key_len)
+        {
+            pfree(key);
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro metadata key")));
+            return false;
+        }
+        key[key_len] = '\0';
+
+        /* Read value length */
+        int64 value_len;
+        if (!ReadAvroVariableLengthInt(cstate, &value_len))
+        {
+            pfree(key);
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro metadata value length")));
+            return false;
+        }
+
+        /* Sanity check value length */
+        if (value_len < 0 || value_len > AVRO_MAX_STRING_LENGTH)
+        {
+            pfree(key);
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("invalid Avro metadata value length: %ld", value_len)));
+            return false;
+        }
+
+        /* Read value */
+        char *value = palloc(value_len + 1);
+        if (CopyReadBinaryData(cstate, value, value_len) != value_len)
+        {
+            pfree(key);
+            pfree(value);
+            pfree(schema_buf.data);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro metadata value")));
+            return false;
+        }
+        value[value_len] = '\0';
+
+        /* If this is the schema, append it to our buffer */
+        if (strstr(key, "avro.schema") != NULL)
+        {
+            appendStringInfoString(&schema_buf, value);
+        }
+
+        ereport(DEBUG1,
+                (errmsg("Avro metadata: %s = %s", key, value)));
+
+        pfree(key);
+        pfree(value);
+    }
+
+    /* Store the complete schema */
+    if (schema_buf.len > 0)
+    {
+        avro_state->schema = pstrdup(schema_buf.data);
+        ereport(NOTICE,
+                (errmsg("Complete Avro schema: %s", avro_state->schema)));
+    }
+    pfree(schema_buf.data);
+
+    /* Read sync marker */
+    if (CopyReadBinaryData(cstate, avro_state->sync_marker, AVRO_SYNC_MARKER_SIZE) 
+        != AVRO_SYNC_MARKER_SIZE)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                 errmsg("failed to read Avro sync marker")));
+        return false;
+    }
+
+    avro_state->header_read = true;
+    avro_state->records_remaining = 0;
+    avro_state->bytes_remaining = 0;
+
+    return true;
+}
+
+/*
+ * Read and parse an Avro record into fields
+ */
+static bool
+CopyReadAvroRecord(CopyFromState cstate, char ***fields, int *nfields)
+{
+    AvroFileState *avro_state;
+    TupleDesc tupDesc;
+    int maxFields;
+    int i;
+    
+    if (!cstate->avro_state) {
+        /* First time - initialize Avro state */
+        cstate->avro_state = palloc0(sizeof(AvroFileState));
+        avro_state = cstate->avro_state;
+        
+        /* Read Avro file header */
+        if (!ReadAvroHeader(cstate)) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro file header")));
+        }
+        avro_state->header_read = true;
+    }
+    
+    avro_state = cstate->avro_state;
+    
+    /* If we've finished the current block, read the next one */
+    if (avro_state->records_remaining <= 0) {
+        elog(NOTICE, "Reading next Avro block");
+        
+        /* Read next block */
+        if (!ReadAvroBlock(cstate))
+            return false;
+    }
+    
+    /* Get tuple descriptor and max fields */
+    tupDesc = RelationGetDescr(cstate->rel);
+    maxFields = tupDesc->natts;
+    
+    elog(NOTICE, "Reading Avro record with %d fields, %ld records remaining", 
+         maxFields, avro_state->records_remaining);
+    
+    /* Ensure we have enough space for fields */
+    if (cstate->max_fields < maxFields) {
+        cstate->max_fields = maxFields;
+        cstate->raw_fields = repalloc(cstate->raw_fields, 
+                                    maxFields * sizeof(char *));
+    }
+    
+    /* Initialize all fields to NULL */
+    for (i = 0; i < maxFields; i++) {
+        cstate->raw_fields[i] = NULL;
+    }
+    
+    /* Read record data */
+    for (i = 0; i < maxFields; i++) {
+        int64 value_len;
+        char *value;
+        Form_pg_attribute att = TupleDescAttr(tupDesc, i);
+        
+        /* Read field length */
+        if (!ReadAvroVariableLengthInt(cstate, &value_len)) {
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro field length for column \"%s\"", 
+                            NameStr(att->attname))));
+        }
+        
+        elog(DEBUG1, "Field %d (%s) length: %ld", i, NameStr(att->attname), value_len);
+        
+        if (value_len == 0) {
+            /* Null value */
+            cstate->raw_fields[i] = NULL;
+            continue;
+        }
+        
+        /* Read field value */
+        value = palloc(value_len + 1);
+        if (CopyReadBinaryData(cstate, value, value_len) != value_len) {
+            pfree(value);
+            ereport(ERROR,
+                    (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+                     errmsg("failed to read Avro field value for column \"%s\"", 
+                            NameStr(att->attname))));
+        }
+        value[value_len] = '\0';
+        
+        /* Store the field value */
+        cstate->raw_fields[i] = value;
+    }
+    
+    avro_state->records_remaining--;
+    *fields = cstate->raw_fields;
+    *nfields = maxFields;
+    
+    return true;
+}
+
+/* Clean up Avro state */
+static void
+CleanupAvroState(CopyFromState cstate)
+{
+    if (cstate->avro_state) {
+        if (cstate->avro_state->schema)
+            pfree(cstate->avro_state->schema);
+        pfree(cstate->avro_state);
+        cstate->avro_state = NULL;
     }
 }
