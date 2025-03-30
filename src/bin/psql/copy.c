@@ -37,7 +37,56 @@ struct copy_options
 	bool		psql_inout;
 	bool		from;
 	bool		preview;
+	int         thread_count;
 };
+
+static bool
+is_large_file(const char *filename)
+{
+	struct stat st;
+	
+	if (stat(filename, &st) != 0)
+		return false;
+	
+	return st.st_size > (10 * 1024 * 1024);
+}
+
+static int
+prompt_for_thread_count(int default_threads)
+{
+	char response[32];
+	int thread_count;
+	
+	printf("\nLarge file detected. How many threads would you like to use? [%d]: ", default_threads);
+	fflush(stdout);
+	
+	if (fgets(response, sizeof(response), stdin) == NULL)
+		return default_threads;
+	
+	/* Remove trailing newline */
+	if (response[strlen(response) - 1] == '\n')
+		response[strlen(response) - 1] = '\0';
+	
+	/* If empty response, use default */
+	if (response[0] == '\0')
+		return default_threads;
+	
+	thread_count = atoi(response);
+	
+	/* Validate thread count (minimum 1, maximum 32) */
+	if (thread_count < 1)
+	{
+		pg_log_error("Thread count must be at least 1, using 1 thread");
+		return 1;
+	}
+	else if (thread_count > 32)
+	{
+		pg_log_error("Thread count cannot exceed 32, using 32 threads");
+		return 32;
+	}
+	
+	return thread_count;
+}
 
 static void
 free_copy_options(struct copy_options *ptr)
@@ -187,6 +236,7 @@ parse_slash_copy(const char *args)
 
 	result = pg_malloc0(sizeof(struct copy_options));
 	result->before_tofrom = pg_strdup("");
+	result->thread_count = 4;
 
 	token = strtokx(args, whitespace, ".,()", "\"",
 					0, false, false, pset.encoding);
@@ -348,7 +398,18 @@ do_copy(const char *args)
 
 	if (!options)
 		return false;
-
+		if (options->from && options->file && !options->program)
+		{
+			if (is_large_file(options->file))
+			{
+				options->thread_count = prompt_for_thread_count(options->thread_count);
+				
+				/* Set environment variable for thread count */
+				char thread_env[32];
+				snprintf(thread_env, sizeof(thread_env), "PSQL_COPY_THREADS=%d", options->thread_count);
+				putenv(strdup(thread_env)); /* Use strdup to ensure the string persists */
+			}
+		}
 	if (options->preview)
 	{
 		bool preview_success = preview_copy_data(options);
@@ -570,42 +631,71 @@ process_copy_chunk(void *arg)
     
     return NULL;
 }
-
 bool
 handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
 {
     bool        OK;
     bool        showprompt;
-    pthread_t   threads[NUM_COPY_THREADS];
-    struct copy_thread_data thread_data[NUM_COPY_THREADS];
-    char       *thread_buffers[NUM_COPY_THREADS];
-    int         active_thread = 0;
+    pthread_t   *threads;
+    struct copy_thread_data *thread_data;
+    char       **thread_buffers;
     bool        threads_initialized = false;
     int         i;
-
-    for (i = 0; i < NUM_COPY_THREADS; i++) {
+    int         thread_count = NUM_COPY_THREADS;  /* Use the defined default */
+    char       *thread_env;
+    
+    /* Get thread count from environment if available */
+    thread_env = getenv("PSQL_COPY_THREADS");
+    if (thread_env != NULL) {
+        int env_count = atoi(thread_env);
+        if (env_count > 0 && env_count <= 32)
+            thread_count = env_count;
+    }
+    
+    /* Allocate thread arrays dynamically based on thread_count */
+    threads = (pthread_t *) malloc(thread_count * sizeof(pthread_t));
+    thread_data = (struct copy_thread_data *) malloc(thread_count * sizeof(struct copy_thread_data));
+    thread_buffers = (char **) malloc(thread_count * sizeof(char *));
+    
+    if (threads == NULL || thread_data == NULL || thread_buffers == NULL)
+    {
+        pg_log_error("Out of memory allocating thread structures");
+        if (threads) free(threads);
+        if (thread_data) free(thread_data);
+        if (thread_buffers) free(thread_buffers);
+        return false;
+    }
+    
+    for (i = 0; i < thread_count; i++) {
         thread_buffers[i] = malloc(THREAD_BUFFER_SIZE);
-        if (!thread_buffers[i]) {
+        if (thread_buffers[i] == NULL) {
             pg_log_error("Out of memory allocating thread buffer");
-          
+            
             while (--i >= 0)
                 free(thread_buffers[i]);
+                
+            free(threads);
+            free(thread_data);
+            free(thread_buffers);
             return false;
         }
     }
-
+    
     if (sigsetjmp(sigint_interrupt_jmp, 1) != 0)
     {
-       
         PQputCopyEnd(conn, (PQprotocolVersion(conn) < 3) ? NULL : 
                     _("canceled by user"));
         
         if (threads_initialized) {
-            for (i = 0; i < NUM_COPY_THREADS; i++) {
+            for (i = 0; i < thread_count; i++) {
                 pthread_join(threads[i], NULL);
                 free(thread_buffers[i]);
             }
         }
+        
+        free(threads);
+        free(thread_data);
+        free(thread_buffers);
         
         OK = false;
         goto copyin_cleanup;
@@ -655,12 +745,27 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
     else
     {
         bool        copydone = false;
-        size_t      buflen[NUM_COPY_THREADS] = {0};
+        size_t      *buflen = (size_t *) malloc(thread_count * sizeof(size_t));
         bool        at_line_begin = true;
         int         current_thread = 0;
-        bool        thread_active[NUM_COPY_THREADS] = {false};
+        bool        *thread_active = (bool *) malloc(thread_count * sizeof(bool));
 
-        for (i = 0; i < NUM_COPY_THREADS; i++) {
+        if (buflen == NULL || thread_active == NULL) {
+            pg_log_error("Out of memory allocating thread state");
+            free(buflen);
+            free(thread_active);
+            for (i = 0; i < thread_count; i++)
+                free(thread_buffers[i]);
+            free(threads);
+            free(thread_data);
+            free(thread_buffers);
+            return false;
+        }
+        
+        /* Initialize thread state arrays */
+        for (i = 0; i < thread_count; i++) {
+            buflen[i] = 0;
+            thread_active[i] = false;
             thread_data[i].thread_id = i;
             thread_data[i].conn = conn;
             thread_data[i].buffer = thread_buffers[i];
@@ -678,6 +783,7 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
                 fputs(prompt, stdout);
                 fflush(stdout);
             }
+
             if (thread_active[current_thread]) {
                 pthread_join(threads[current_thread], NULL);
                 thread_active[current_thread] = false;
@@ -742,11 +848,12 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
                 }
                 
                 buflen[current_thread] = 0;
-                current_thread = (current_thread + 1) % NUM_COPY_THREADS;
+                current_thread = (current_thread + 1) % thread_count;
             }
         }
 
-        for (i = 0; i < NUM_COPY_THREADS; i++) {
+        /* Wait for all active threads to finish */
+        for (i = 0; i < thread_count; i++) {
             if (thread_active[i]) {
                 pthread_join(threads[i], NULL);
                 if (!thread_data[i].success) {
@@ -754,10 +861,18 @@ handleCopyIn(PGconn *conn, FILE *copystream, bool isbinary, PGresult **res)
                 }
             }
         }
+        
+        free(buflen);
+        free(thread_active);
     }
-    for (i = 0; i < NUM_COPY_THREADS; i++) {
+    
+    /* Free allocated resources */
+    for (i = 0; i < thread_count; i++) {
         free(thread_buffers[i]);
     }
+    free(thread_buffers);
+    free(thread_data);
+    free(threads);
 
     if (ferror(copystream))
         OK = false;
