@@ -1,8 +1,20 @@
-# PostgreSQL Database Management System
+# Enhancement to Psqlcopy
 
 This directory contains the source code distribution of the PostgreSQL database management system.
 
-PostgreSQL is an advanced object-relational database management system that supports an extended subset of the SQL standard, including transactions, foreign keys, subqueries, triggers, user-defined types and functions. This distribution also contains C language bindings.
+PostgreSQL is an advanced object-relational database management system that supports an extended subset of the SQL standard, including transactions, foreign keys, subqueries, triggers, user-defined types, and functions. This distribution also contains C language bindings.
+
+## Implemented Features
+
+We have enhanced the PostgreSQL `COPY` command by implementing the following features:
+
+- **Parallel COPY**: Multi-threaded data processing for improved performance.
+- **Preview Data Before Copying**: Allows users to preview data before executing the `COPY` operation.
+- **Support for JSON and JSONL**: Enables importing and exporting data in JSON and JSONL formats.
+- **Support for Avro**: Facilitates high-performance data exchange using the Avro format.
+- **Support for Parquet**: Optimized for columnar storage, enabling efficient data retrieval.
+- **Support for ORC File Format**: Adds compatibility with ORC, commonly used in big data processing.
+
 
 ## Installation
 
@@ -66,9 +78,75 @@ Before installing PostgreSQL, ensure you have the following:
 
 For detailed installation instructions, see: https://www.postgresql.org/docs/17/installation.html
 
+# Implementation
+
+### Preview Data with \copy Command
+
+The PostgreSQL `\copy` command allows you to preview and import data from files directly from the psql client. Unlike the server-side `COPY` command, `\copy` reads from the client's file system and doesn't require server file access permissions.
+
+```sql
+-- Import CSV data with header using \copy preview
+\copy preview employees FROM '/home/amalendu/college/employee-data' CSV HEADER
+```
+![image](https://github.com/user-attachments/assets/8c1c6514-beb4-4506-bc77-e242dc141b3c)
+
+# Parallel COPY Implementation
+
+This project includes a multi-threaded implementation of the PostgreSQL `COPY` command to improve data loading performance using parallel processing.
+
+## Implemented Features
+
+- Multi-threaded data processing for `COPY` operations
+- Configurable number of worker threads (default: 8)
+- Thread synchronization for protocol consistency
+- Support for both text and binary formats
+
+## Performance Comparison
+
+We tested the implementation with a table containing **1,000,000 rows**.. Surprisingly, the parallel implementation showed slower performance than the standard single-threaded implementation :
+
+| Implementation  | Time (ms) | Notes |
+|----------------|---------------|-------|
+| Standard COPY  | 1918.758          | Original PostgreSQL implementation |
+| Parallel COPY  | 3386.61       | Using 8 threads |
+
+## Analysis
+
+The parallel implementation's slower performance can be attributed to several factors:
+
+1. **Protocol Overhead**: PostgreSQL's `COPY` protocol requires ordered messages, which necessitates thread synchronization that adds overhead.
+2. **Context Switching**: Thread creation and management overhead exceeds the benefits for this operation.
+3. **I/O Bottleneck**: The data transfer is likely I/O bound rather than CPU bound.
+4. **Connection Limitations**: PostgreSQL connections weren't designed for concurrent access from multiple threads.
+5. When the number of thread increases the times decreases.
+
+## Screenshot 
+### parallel operation
+![image](https://github.com/user-attachments/assets/d3c95297-d7d1-422a-948a-48931b0210ad)
+### Single threaded execution
+![image](https://github.com/user-attachments/assets/8ef4b9fe-35db-4fb2-9a8e-33df0f21e88d)
+
+### using user input
+![Screenshot From 2025-03-30 15-58-38](https://github.com/user-attachments/assets/4271d532-c46b-4a8b-9e45-10abff66fa03)
+
+## Usage
+
+### SQL Commands
+
+```sql
+-- Enable timing to measure performance
+\timing on
+
+-- Standard COPY operation
+\copy test_copy_data FROM '/path/to/data.csv' CSV HEADER;
+
+-- Parallel COPY operation (with 8 threads by default)
+```
 ## Importing Data with COPY Command
 
 PostgreSQL provides the powerful COPY command for efficiently loading data from various formats including CSV, text, and JSON files.
+
+
 
 ### Importing JSON Data
 
@@ -96,28 +174,17 @@ The JSON file should contain one complete JSON object per line (JSON Lines forma
 
 ```json
 [
-{"id": 1, "name": "John Smith", "age": 32, "department": "Engineering", "salary": 85000}
-{"id": 2, "name": "Sara Johnson", "age": 28, "department": "Marketing", "salary": 72000}
-{"id": 3, "name": "Michael Brown", "age": 45, "department": "Finance", "salary": 110000}
-{"id": 4, "name": "Patricia Davis", "age": 37, "department": "Human Resources", "salary": 65000}
-{"id": 5, "name": "Robert Wilson", "age": 29, "department": "Engineering", "salary": 78000}
+    {"id":1, "name":"John Doe", "age":35, "department":"HR", "salary":60000},
+    {"id":2, "name":"Jane Smith", "age":29, "department":"Finance", "salary":75000},
+    {"id":3, "name":"Michael Johnson", "age":40, "department":"IT", "salary":90000},
+    {"id":4, "name":"Emily Davis", "age":25, "department":"Marketing", "salary":50000},
+    {"id":5, "name":"David Wilson", "age":32, "department":"Operations", "salary":68000}
 ]
 ```
 
-### Other COPY Options
+### Screenshot
+![image](https://github.com/user-attachments/assets/1801369a-fe83-4760-960e-243e3affb37d)
 
-COPY provides various options for flexible data import:
-
-```sql
--- Importing from a CSV file
-COPY employees FROM '/path/to/employees.csv' WITH (FORMAT 'csv', HEADER);
-
--- Importing from a text file with delimiter
-COPY employees FROM '/path/to/employees.txt' WITH (DELIMITER '|');
-
--- Exporting data to a file
-COPY employees TO '/path/to/export_file.csv' WITH (FORMAT 'csv', HEADER);
-```
 
 
 
@@ -180,7 +247,10 @@ COPY (SELECT name, department FROM employees) TO '/tmp/emp_names.json' WITH (FOR
 ```
 
 
+### Screenshot
+![image](https://github.com/user-attachments/assets/75b915bb-eee9-455a-8ef7-c916678b814c)
 
+![image](https://github.com/user-attachments/assets/c899d221-f72f-4904-85a9-14e7fc9f636a)
 
 
 ## Importing and Exporting Avro Data
@@ -269,6 +339,11 @@ COPY (
 ) TO '/path/to/engineers.avro' WITH (FORMAT 'avro');
 ```
 
+### Screenshot
+![image](https://github.com/user-attachments/assets/91ec49ab-b8e6-4fc0-a44c-75cd006b456d)
+![image](https://github.com/user-attachments/assets/82740695-ccc1-4213-89a7-fba426389885)
+![image](https://github.com/user-attachments/assets/69e6f17d-d205-49d1-8993-43120e5545b8)
+
 ### Performance Considerations
 
 - Avro provides better performance for:
@@ -328,4 +403,9 @@ psql -h hostname -p port dbname
 - Latest versions: https://www.postgresql.org/download/
 - Main website: https://www.postgresql.org/
 - Copyright and license information can be found in the file COPYRIGHT.
+  
+## Contributors
+- Amalendu Manoj(https://github.com/vagabond-0)
+- Krishnadev P V(https://github.com/Krishnadevpv)
+- Fathima Mahim (https://github.com/fathimamahim)
 

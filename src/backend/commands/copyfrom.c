@@ -1761,15 +1761,16 @@ BeginCopyFrom(ParseState *pstate,
 
 	pgstat_progress_update_multi_param(3, progress_cols, progress_vals);
 
-	if (cstate->opts.binary)
+	if (cstate->opts.binary && !cstate->opts.avro_mode)
 	{
 		/* Read and verify binary header */
 		ReceiveCopyBinaryHeader(cstate);
 	}
 
 	/* create workspace for CopyReadAttributes results */
-	if (!cstate->opts.binary)
+	if (!cstate->opts.binary )
 	{
+		elog(NOTICE,"HELO");
 		AttrNumber	attr_count = list_length(cstate->attnumlist);
 
 		cstate->max_fields = attr_count;

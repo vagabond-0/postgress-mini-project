@@ -503,7 +503,7 @@ ProcessCopyOptions(ParseState *pstate,
 			else if(strcmp(fmt,"avro") == 0){
 				elog(NOTICE, "avro mode detected in COPY command");
 				opts_out->file_encoding = AVRO_ENCODING;
-        		opts_out->binary = true; 
+        		opts_out->avro_mode = true; 
 			}else if(strcmp(fmt,"parquet") == 0){
 				elog(NOTICE, "Parquet mode detected in COPY command");
 				opts_out->parquet_mode = true;	
