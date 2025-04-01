@@ -43,3 +43,8 @@ lib*.pc
 /Release/
 /tmp_install/
 /portlock/
+avro-tools-1.11.1.jar.1
+data/base/16388/16390
+avro-tools-1.11.1.jar.1
+*.jar
+data/base/
